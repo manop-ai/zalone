@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+const PropertySection = dynamic(() => import('./PropertySection'), { ssr: false })
 import { useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -358,6 +360,14 @@ export default function NeighborhoodPage() {
 
   const [dark,      setDark]      = useState(true)
   const [bedrooms,  setBedrooms]  = useState(3)
+
+  // Sync dark mode from NavBar
+  useEffect(() => {
+    // Import inline to avoid SSR issues
+    const { getInitialDark, listenTheme } = require('../../../lib/theme')
+    setDark(getInitialDark())
+    return listenTheme((d: boolean) => setDark(d))
+  }, [])
   const [price,     setPrice]     = useState(0)
   const [priceInput,setPriceInput]= useState('')
 
@@ -440,7 +450,29 @@ export default function NeighborhoodPage() {
   return (
     <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', transition: 'all 0.3s' }}>
 
-
+      {/* ── NAV ── */}
+      <nav style={{
+        position: 'sticky', top: 0, zIndex: 100,
+        background: dark ? 'rgba(15,23,42,0.92)' : 'rgba(248,250,252,0.92)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid var(--borderL)',
+        padding: '0 2rem',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        height: 64,
+      }}>
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--purple)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 800, color: '#fff' }}>Z</div>
+          <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>Zalone</span>
+        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <Link href="/" style={{ fontSize: '0.82rem', color: 'var(--text2)', textDecoration: 'none' }}>← New Search</Link>
+          <button onClick={() => setDark(!dark)} style={{ width: 40, height: 24, borderRadius: 100, background: dark ? 'var(--purple)' : '#CBD5E1', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.25s' }}>
+            <div style={{ position: 'absolute', top: 3, left: dark ? 19 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem' }}>
+              {dark ? '☀' : '☾'}
+            </div>
+          </button>
+        </div>
+      </nav>
 
       {/* ── HERO ── */}
       <section style={{
@@ -764,6 +796,11 @@ export default function NeighborhoodPage() {
             {/* Data note */}
             <div style={{ padding: '1rem', background: dark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)', border: '1px solid var(--borderL)', borderRadius: 12, fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'var(--font-mono)', lineHeight: 1.6 }}>
               Benchmarks from verified Lagos market research. Metrics computed from your scenario inputs. Always conduct independent due diligence. Data: Manop Intelligence.
+            </div>
+
+            {/* Properties in this area */}
+            <div style={{ marginTop: '2rem' }}>
+              <PropertySection neighborhood={slug} dark={dark} />
             </div>
 
             {/* Agency CTA */}

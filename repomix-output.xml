@@ -1,0 +1,4247 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/
+  admin/
+    upload/
+      page.tsx
+  api/
+    ingest/
+      route.ts
+  neighborhood/
+    [slug]/
+      page.tsx
+  property/
+    [id]/
+      page.tsx
+  search/
+    page.tsx
+  globals.css
+  globals.d.ts
+  layout.tsx
+  page.tsx
+components/
+  NavBar.tsx
+lib/
+  intelligence.ts
+  manop-cleaner.ts
+  supabase.ts
+.gitignore
+next-env.d.ts
+next.config.js
+package.json
+postcss.config.js
+tailwind.config.js
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/admin/upload/page.tsx">
+'use client'
+
+import { useState, useRef, useCallback } from 'react'
+import { parseCSV, processRawData, fmtClean } from '../../../lib/manop-cleaner'
+import type { ProcessingResult, CleanRecord } from '../../../lib/manop-cleaner'
+
+// ─── Theme ────────────────────────────────────────────────────────────────
+const D = {
+  bg:       '#0F172A',
+  bg2:      '#1E293B',
+  bg3:      '#162032',
+  text:     '#F8FAFC',
+  text2:    'rgba(248,250,252,0.65)',
+  text3:    'rgba(248,250,252,0.35)',
+  purple:   '#5B2EFF',
+  purpleL:  '#7C5FFF',
+  teal:     '#14B8A6',
+  green:    '#22C55E',
+  amber:    '#F59E0B',
+  red:      '#EF4444',
+  border:   'rgba(248,250,252,0.07)',
+  borderP:  'rgba(91,46,255,0.25)',
+  card:     '#162032',
+}
+
+function Badge({ color, children }: { color: string; children: React.ReactNode }) {
+  return (
+    <span style={{
+      background: `${color}18`, border: `1px solid ${color}40`,
+      color, borderRadius: 100, padding: '0.15rem 0.6rem',
+      fontSize: '0.68rem', fontWeight: 700,
+      letterSpacing: '0.04em', whiteSpace: 'nowrap',
+    }}>
+      {children}
+    </span>
+  )
+}
+
+function Stat({ label, value, color }: { label: string; value: string | number; color?: string }) {
+  return (
+    <div style={{
+      background: D.bg3, border: `1px solid ${D.border}`,
+      borderRadius: 12, padding: '1rem 1.25rem',
+    }}>
+      <div style={{ fontSize: '0.65rem', fontWeight: 700, color: D.teal, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.35rem' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: '1.6rem', fontWeight: 800, color: color || D.text, letterSpacing: '-0.03em', lineHeight: 1 }}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────
+
+export default function UploadPage() {
+  const [step,        setStep]        = useState<'upload' | 'mapping' | 'results' | 'approved'>('upload')
+  const [dragging,    setDragging]    = useState(false)
+  const [fileName,    setFileName]    = useState('')
+  const [agencyName,  setAgencyName]  = useState('')
+  const [defaultCity, setDefaultCity] = useState('')
+  const [processing,  setProcessing]  = useState(false)
+  const [result,      setResult]      = useState<ProcessingResult | null>(null)
+  const [approved,    setApproved]    = useState<CleanRecord[]>([])
+  const [rejected,    setRejected]    = useState<Set<number>>(new Set())
+  const [submitting,  setSubmitting]  = useState(false)
+  const [submitted,   setSubmitted]   = useState(false)
+  const [activeTab,   setActiveTab]   = useState<'clean' | 'flagged' | 'duplicates'>('clean')
+  const fileRef = useRef<HTMLInputElement>(null)
+  const rawDataRef = useRef<string>('')
+
+  const processFile = useCallback((text: string, name: string) => {
+    setFileName(name)
+    rawDataRef.current = text
+  }, [])
+
+  const handleFile = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = e => {
+      const text = e.target?.result as string
+      processFile(text, file.name)
+      setStep('mapping')
+    }
+    reader.readAsText(file)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragging(false)
+    const file = e.dataTransfer.files[0]
+    if (file) handleFile(file)
+  }
+
+  const runCleaning = () => {
+    setProcessing(true)
+    setTimeout(() => {
+      try {
+        const rows = parseCSV(rawDataRef.current)
+        const r    = processRawData(rows, {
+          source_agency:        agencyName || 'Manual Upload',
+          default_city:         defaultCity || undefined,
+          default_listing_type: 'for-sale',
+        })
+        setResult(r)
+        setApproved(r.clean)
+        setStep('results')
+      } catch (err) {
+        alert('Error processing file: ' + String(err))
+      } finally {
+        setProcessing(false)
+      }
+    }, 100)
+  }
+
+  const toggleReject = (i: number) => {
+    setRejected(prev => {
+      const next = new Set(prev)
+      next.has(i) ? next.delete(i) : next.add(i)
+      return next
+    })
+  }
+
+  const handleSubmit = async () => {
+    if (!result) return
+    setSubmitting(true)
+
+    const toSubmit = result.clean.filter((_, i) => !rejected.has(i))
+
+    try {
+      const res = await fetch('/api/ingest', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          records: toSubmit,
+          source_agency: agencyName || 'Manual Upload',
+        }),
+      })
+      if (res.ok) {
+        setSubmitted(true)
+        setStep('approved')
+      } else {
+        alert('Submission failed — check your Supabase connection')
+      }
+    } catch {
+      alert('Network error — is the dev server running?')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // ── STEP: Upload ─────────────────────────────────────────────────────────
+  if (step === 'upload') return (
+    <div style={{ background: D.bg, minHeight: '100vh', padding: '3rem 2rem', color: D.text }}>
+      <div style={{ maxWidth: 700, margin: '0 auto' }}>
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: D.teal, textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '0.5rem' }}>
+            Manop Intelligence
+          </div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.04em', marginBottom: '0.5rem' }}>
+            Data Upload & Cleaning
+          </h1>
+          <p style={{ color: D.text2, lineHeight: 1.65, fontWeight: 300 }}>
+            Upload any CSV or Excel export from an agency or your own research.
+            Manop will clean, standardize, deduplicate, and validate the data
+            before storing it — no manual formatting needed.
+          </p>
+        </div>
+
+        {/* Drop zone */}
+        <div
+          onDrop={handleDrop}
+          onDragOver={e => { e.preventDefault(); setDragging(true) }}
+          onDragLeave={() => setDragging(false)}
+          onClick={() => fileRef.current?.click()}
+          style={{
+            border: `2px dashed ${dragging ? D.purple : D.border}`,
+            borderRadius: 16,
+            padding: '3rem 2rem',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: dragging ? 'rgba(91,46,255,0.08)' : 'rgba(255,255,255,0.02)',
+            transition: 'all 0.2s',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📂</div>
+          <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.5rem' }}>
+            Drop your CSV or Excel file here
+          </div>
+          <div style={{ color: D.text3, fontSize: '0.82rem', marginBottom: '1rem' }}>
+            or click to browse
+          </div>
+          <div style={{
+            display: 'inline-block',
+            background: D.purple, color: '#fff',
+            padding: '0.5rem 1.25rem', borderRadius: 8,
+            fontSize: '0.82rem', fontWeight: 600,
+          }}>
+            Choose File
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,.xlsx,.xls,.tsv,.txt"
+            style={{ display: 'none' }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
+          />
+        </div>
+
+        {/* What columns it accepts */}
+        <div style={{ background: D.bg3, border: `1px solid ${D.border}`, borderRadius: 12, padding: '1.25rem' }}>
+          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: D.teal, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.875rem' }}>
+            Accepts Any Column Names — Examples
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+            {[
+              ['Location / Neighborhood / Area / Address', 'Price / Amount / Asking / Cost'],
+              ['Bedroom / Bed / Rooms / BR', 'Bathroom / Bath / Toilet'],
+              ['Type / Property Type / Category', 'Title / Document / C of O / Legal'],
+              ['Size / SQM / Floor Area', 'Description / Details / Features'],
+              ['Listing / Purpose / For Sale / Rent', 'URL / Link / Source'],
+            ].map(([a, b], i) => (
+              <div key={i} style={{ fontSize: '0.78rem', color: D.text2, padding: '0.4rem 0', borderBottom: `1px solid ${D.border}` }}>
+                {a}
+              </div>
+            )).concat([
+              <div key="b" style={{ fontSize: '0.78rem', color: D.text2, padding: '0.4rem 0', borderBottom: `1px solid ${D.border}` }}>
+                URL / Link / Source / Property URL
+              </div>
+            ])}
+          </div>
+          <div style={{ marginTop: '0.75rem', fontSize: '0.72rem', color: D.text3 }}>
+            Column names don't need to match exactly — Manop guesses intelligently.
+            Extra columns are preserved in the raw data record.
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── STEP: Mapping (agency name + options) ─────────────────────────────────
+  if (step === 'mapping') return (
+    <div style={{ background: D.bg, minHeight: '100vh', padding: '3rem 2rem', color: D.text }}>
+      <div style={{ maxWidth: 600, margin: '0 auto' }}>
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ fontSize: '0.72rem', color: D.teal, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.5rem' }}>File Ready</div>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, letterSpacing: '-0.03em' }}>
+            Configure & Clean
+          </h1>
+          <div style={{ color: D.text2, marginTop: '0.4rem', fontSize: '0.875rem' }}>
+            📄 {fileName}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ background: D.bg3, border: `1px solid ${D.border}`, borderRadius: 12, padding: '1.5rem' }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: D.teal, textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: '0.5rem' }}>
+              Source Agency / Platform Name
+            </label>
+            <input
+              type="text"
+              value={agencyName}
+              onChange={e => setAgencyName(e.target.value)}
+              placeholder="e.g. Vala Homes, Revolution Plus, My Research..."
+              style={{
+                width: '100%', padding: '0.65rem 0.875rem',
+                background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`,
+                borderRadius: 8, color: D.text, fontSize: '0.9rem', outline: 'none',
+              }}
+            />
+            <div style={{ fontSize: '0.72rem', color: D.text3, marginTop: '0.4rem' }}>
+              This appears as the data source credit on Zalone: "Data: Vala Homes"
+            </div>
+          </div>
+
+          <div style={{ background: D.bg3, border: `1px solid ${D.border}`, borderRadius: 12, padding: '1.5rem' }}>
+            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: D.teal, textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: '0.5rem' }}>
+              Default City (if not in file)
+            </label>
+            <input
+              type="text"
+              value={defaultCity}
+              onChange={e => setDefaultCity(e.target.value)}
+              placeholder="e.g. Lagos"
+              style={{
+                width: '100%', padding: '0.65rem 0.875rem',
+                background: 'rgba(255,255,255,0.06)', border: `1px solid ${D.border}`,
+                borderRadius: 8, color: D.text, fontSize: '0.9rem', outline: 'none',
+              }}
+            />
+            <div style={{ fontSize: '0.72rem', color: D.text3, marginTop: '0.4rem' }}>
+              Used when the file doesn't have a city column
+            </div>
+          </div>
+
+          <button
+            onClick={runCleaning}
+            disabled={processing}
+            style={{
+              background: D.purple, color: '#fff', border: 'none',
+              borderRadius: 10, padding: '0.875rem',
+              fontSize: '1rem', fontWeight: 700, cursor: 'pointer',
+              opacity: processing ? 0.7 : 1, transition: 'opacity 0.15s',
+            }}
+          >
+            {processing ? '⟳ Cleaning data...' : 'Run Manop Cleaner →'}
+          </button>
+
+          <button onClick={() => setStep('upload')} style={{ background: 'transparent', border: `1px solid ${D.border}`, color: D.text2, borderRadius: 10, padding: '0.75rem', fontSize: '0.875rem', cursor: 'pointer' }}>
+            ← Upload different file
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── STEP: Results ─────────────────────────────────────────────────────────
+  if (step === 'results' && result) {
+    const tabData = activeTab === 'clean' ? result.clean : activeTab === 'flagged' ? result.flagged : result.duplicates.map(d => d.duplicate)
+
+    return (
+      <div style={{ background: D.bg, minHeight: '100vh', color: D.text }}>
+
+        {/* Header */}
+        <div style={{ background: D.bg2, borderBottom: `1px solid ${D.border}`, padding: '1.5rem 2rem' }}>
+          <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+              <div>
+                <div style={{ fontSize: '0.7rem', color: D.teal, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.3rem' }}>
+                  Cleaning Complete · {agencyName || 'Manual Upload'}
+                </div>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '-0.03em' }}>
+                  {fileName}
+                </h1>
+              </div>
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                style={{
+                  background: D.green, color: '#fff', border: 'none',
+                  borderRadius: 10, padding: '0.75rem 1.5rem',
+                  fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer',
+                  opacity: submitting ? 0.7 : 1,
+                }}
+              >
+                {submitting
+                  ? '⟳ Saving...'
+                  : `✓ Approve & Save ${result.clean.length - rejected.size} Records`}
+              </button>
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem', marginTop: '1.5rem' }}>
+              <Stat label="Total Rows" value={result.summary.total} />
+              <Stat label="Clean" value={result.summary.clean} color={D.green} />
+              <Stat label="Flagged" value={result.summary.flagged} color={D.amber} />
+              <Stat label="Duplicates" value={result.summary.duplicates} color={D.text3} />
+              <Stat label="Median Price" value={fmtClean(result.summary.median_price)} color={D.purpleL} />
+            </div>
+
+            {/* Neighborhoods found */}
+            {Object.keys(result.summary.neighborhoods).length > 0 && (
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.68rem', color: D.text3 }}>Areas:</span>
+                {Object.entries(result.summary.neighborhoods).map(([n, count]) => (
+                  <span key={n} style={{
+                    background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.25)',
+                    color: D.teal, borderRadius: 100, padding: '0.2rem 0.6rem',
+                    fontSize: '0.72rem', fontWeight: 600,
+                  }}>
+                    {n} ({count})
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ borderBottom: `1px solid ${D.border}`, padding: '0 2rem', background: D.bg2 }}>
+          <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', gap: '0' }}>
+            {(['clean', 'flagged', 'duplicates'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: '0.875rem 1.25rem',
+                  background: 'transparent', border: 'none',
+                  borderBottom: `2px solid ${activeTab === tab ? D.purple : 'transparent'}`,
+                  color: activeTab === tab ? D.text : D.text2,
+                  fontSize: '0.82rem', fontWeight: activeTab === tab ? 700 : 400,
+                  cursor: 'pointer', transition: 'all 0.15s',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                }}
+              >
+                {tab === 'clean' && <span style={{ color: D.green }}>✓</span>}
+                {tab === 'flagged' && <span style={{ color: D.amber }}>⚠</span>}
+                {tab === 'duplicates' && <span style={{ color: D.text3 }}>⊕</span>}
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                <span style={{ background: tab === 'clean' ? D.green : tab === 'flagged' ? D.amber : D.text3, color: '#fff', borderRadius: 100, padding: '0.05rem 0.45rem', fontSize: '0.65rem', fontWeight: 700 }}>
+                  {tab === 'clean' ? result.clean.length : tab === 'flagged' ? result.flagged.length : result.duplicates.length}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Records table */}
+        <div style={{ maxWidth: 1200, margin: '0 auto', padding: '1.5rem 2rem' }}>
+          {tabData.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '3rem', color: D.text3, fontSize: '0.875rem' }}>
+              No records in this category
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {(tabData as CleanRecord[]).map((record, i) => {
+                const isRejected = rejected.has(i)
+                return (
+                  <div key={i} style={{
+                    background: isRejected ? 'rgba(239,68,68,0.05)' : D.card,
+                    border: `1px solid ${isRejected ? 'rgba(239,68,68,0.2)' : record.price_flagged ? 'rgba(245,158,11,0.25)' : D.border}`,
+                    borderRadius: 12, padding: '1rem 1.25rem',
+                    opacity: isRejected ? 0.55 : 1,
+                    transition: 'all 0.15s',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', flexWrap: 'wrap' }}>
+                      {/* Left: property info */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem', alignItems: 'center' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                            {record.bedrooms ? `${record.bedrooms}-Bed ` : ''}{record.property_type || 'Property'}
+                          </span>
+                          {record.neighborhood && (
+                            <span style={{ fontSize: '0.8rem', color: D.text2 }}>
+                              📍 {record.neighborhood}{record.city ? `, ${record.city}` : ''}
+                            </span>
+                          )}
+                          <Badge color={record.location_confidence === 'exact' ? D.green : record.location_confidence === 'fuzzy' ? D.amber : D.red}>
+                            {record.location_confidence}
+                          </Badge>
+                          {record.listing_type && <Badge color={D.purpleL}>{record.listing_type.replace(/-/g, ' ')}</Badge>}
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.82rem' }}>
+                          <span style={{ color: record.price_flagged ? D.amber : D.teal, fontWeight: 700 }}>
+                            {fmtClean(record.price, record.currency)}
+                            {record.price_flagged && ' ⚠'}
+                          </span>
+                          {record.bathrooms && <span style={{ color: D.text2 }}>{record.bathrooms} bath</span>}
+                          {record.size_sqm && <span style={{ color: D.text2 }}>{record.size_sqm} m²</span>}
+                          {record.title_document && <span style={{ color: D.text2 }}>📄 {record.title_document}</span>}
+                          {record.source_url && (
+                            <a href={record.source_url} target="_blank" rel="noopener" style={{ color: D.purpleL, fontSize: '0.75rem' }}>
+                              Source ↗
+                            </a>
+                          )}
+                        </div>
+
+                        {record.price_flagged && (
+                          <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: D.amber, background: 'rgba(245,158,11,0.08)', borderRadius: 6, padding: '0.35rem 0.6rem' }}>
+                            ⚠ {record.price_flag_reason}
+                          </div>
+                        )}
+
+                        {record.location_confidence === 'unknown' && (
+                          <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', color: D.red, background: 'rgba(239,68,68,0.08)', borderRadius: 6, padding: '0.35rem 0.6rem' }}>
+                            ✗ Location could not be matched — verify "{record.neighborhood}"
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: approve/reject */}
+                      {activeTab === 'clean' && (
+                        <button
+                          onClick={() => toggleReject(i)}
+                          style={{
+                            padding: '0.4rem 0.875rem',
+                            background: isRejected ? 'rgba(239,68,68,0.15)' : 'transparent',
+                            border: `1px solid ${isRejected ? D.red : D.border}`,
+                            color: isRejected ? D.red : D.text3,
+                            borderRadius: 8, cursor: 'pointer',
+                            fontSize: '0.78rem', fontWeight: 600,
+                            transition: 'all 0.15s', flexShrink: 0,
+                          }}
+                        >
+                          {isRejected ? '↩ Restore' : '✕ Reject'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── STEP: Approved ────────────────────────────────────────────────────────
+  if (step === 'approved') return (
+    <div style={{ background: D.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: D.text }}>
+      <div style={{ textAlign: 'center', maxWidth: 480, padding: '2rem' }}>
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✓</div>
+        <h1 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '0.75rem', color: D.green }}>
+          Data Saved
+        </h1>
+        <p style={{ color: D.text2, lineHeight: 1.65, marginBottom: '2rem' }}>
+          {result?.clean.length ? result.clean.length - rejected.size : 0} records from <strong>{agencyName || 'Manual Upload'}</strong> have been cleaned and stored in Manop's database. They will appear on Zalone with source attribution.
+        </p>
+        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button onClick={() => { setStep('upload'); setResult(null); setFileName(''); setAgencyName(''); setRejected(new Set()); setSubmitted(false) }}
+            style={{ background: D.purple, color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem 1.5rem', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>
+            Upload Another File →
+          </button>
+          <a href="/neighborhood/lekki-phase-1" style={{ background: D.bg3, color: D.text, border: `1px solid ${D.border}`, borderRadius: 10, padding: '0.75rem 1.5rem', fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none', display: 'inline-block' }}>
+            View Lekki Phase 1 →
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+
+  return null
+}
+</file>
+
+<file path="app/api/ingest/route.ts">
+// app/api/ingest/route.ts
+// Receives cleaned records from the upload tool and saves to Supabase
+
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import type { CleanRecord } from '../../../lib/manop-cleaner'
+
+export async function POST(req: NextRequest) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+
+  try {
+    const { records, source_agency }: { records: CleanRecord[]; source_agency: string } = await req.json()
+
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      return NextResponse.json({ error: 'No records provided' }, { status: 400 })
+    }
+
+    // Map CleanRecord to properties table schema
+    const rows = records.map(r => ({
+      property_type:       r.property_type?.toLowerCase().replace(/ \/ /g, '-').replace(/\s+/g, '-') || null,
+      bedrooms:            r.bedrooms,
+      bathrooms:           r.bathrooms,
+      city:                r.city,
+      neighborhood:        r.neighborhood,
+      country_code:        r.country === 'Nigeria' ? 'NG' : r.country === 'Ghana' ? 'GH' : r.country === 'Kenya' ? 'KE' : r.country === 'South Africa' ? 'ZA' : null,
+      price_local:         r.price,
+      currency_code:       r.currency || 'NGN',
+      listing_type:        r.listing_type || 'for-sale',
+      title_document_type: r.title_document,
+      size_sqm:            r.size_sqm,
+      source_type:         'agency-partner',
+      raw_data: {
+        source_agency,
+        description:  r.description,
+        source_url:   r.source_url,
+        dedup_key:    r.dedup_key,
+        raw_input:    r.raw,
+        location_confidence: r.location_confidence,
+        imported_at:  new Date().toISOString(),
+      },
+      confidence: r.location_confidence === 'exact' ? 0.95 : r.location_confidence === 'fuzzy' ? 0.80 : 0.60,
+    }))
+
+    // Batch insert
+    const { data, error } = await supabase
+      .from('properties')
+      .insert(rows)
+      .select('id')
+
+    if (error) {
+      console.error('Supabase insert error:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      success: true,
+      inserted: data?.length || 0,
+      message: `${data?.length || 0} records saved to Manop database`,
+    })
+
+  } catch (err) {
+    console.error('Ingest route error:', err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
+}
+</file>
+
+<file path="app/neighborhood/[slug]/page.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useParams, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+
+// ─── Lagos Neighborhood Intelligence Data ──────────────────────────────────
+// Seeded from manual market research — Manop grows this over time
+
+const NEIGHBORHOOD_DATA: Record<string, {
+  display:          string
+  city:             string
+  tier:             string
+  demand:           string
+  description:      string
+  median_sale_3bed: number
+  median_rent_3bed: number
+  nightly_3bed:     number
+  occupancy_pct:    number
+  price_per_sqm:    number
+  dom_avg:          number
+  yoy_change_pct:   number
+  supply_score:     number  // 1-10 (10 = many listings)
+  demand_score:     number  // 1-10
+  title_types:      string[]
+  key_facts:        string[]
+  best_for:         string[]
+  risks:            string[]
+}> = {
+  'lekki-phase-1': {
+    display:          'Lekki Phase 1',
+    city:             'Lagos',
+    tier:             'Premium',
+    demand:           'High',
+    description:      'Lagos\'s most sought-after residential corridor. Dense with embassies, corporate tenants, and diaspora buyers. Short-let demand is consistently strong year-round.',
+    median_sale_3bed: 120_000_000,
+    median_rent_3bed: 6_000_000,
+    nightly_3bed:     95_000,
+    occupancy_pct:    60,
+    price_per_sqm:    200_000,
+    dom_avg:          75,
+    yoy_change_pct:   8.2,
+    supply_score:     7,
+    demand_score:     9,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
+    key_facts:        [
+      'Highest short-let demand in Lagos outside Ikoyi/VI',
+      'Corporate relocation hub — embassy staff, oil sector',
+      'Strong capital appreciation over 5 years',
+      'Serviced apartment market very active',
+    ],
+    best_for:         ['Short-let / Airbnb', 'Corporate rental', 'Capital appreciation'],
+    risks:            ['Traffic congestion affects desirability', 'Oversupply risk in some streets', 'Variable title quality — verify thoroughly'],
+  },
+  'ikoyi': {
+    display:          'Ikoyi',
+    city:             'Lagos',
+    tier:             'Prime',
+    demand:           'Very High',
+    description:      'Lagos\'s most prestigious address. Ultra-high-net-worth enclave with limited supply and consistent demand from multinationals, senior executives, and foreign residents.',
+    median_sale_3bed: 280_000_000,
+    median_rent_3bed: 14_000_000,
+    nightly_3bed:     180_000,
+    occupancy_pct:    65,
+    price_per_sqm:    350_000,
+    dom_avg:          60,
+    yoy_change_pct:   11.4,
+    supply_score:     4,
+    demand_score:     10,
+    title_types:      ['C of O', 'Governor\'s Consent'],
+    key_facts:        [
+      'Highest price per sqm in Nigeria',
+      'Sub-markets: Old Ikoyi, Banana Island, Parkview Estate',
+      'Institutional and family office buyer base',
+      'Luxury short-let rates highest in West Africa',
+    ],
+    best_for:         ['Luxury short-let', 'Buy & hold', 'Institutional investment'],
+    risks:            ['Requires significant capital', 'Title fraud risk is real — use verified lawyers', 'Limited entry points'],
+  },
+  'victoria-island': {
+    display:          'Victoria Island',
+    city:             'Lagos',
+    tier:             'Prime',
+    demand:           'Very High',
+    description:      'Lagos\'s commercial and diplomatic hub. Mixed-use — offices, hotels, embassies, high-end residential. Business travel drives strong short-let demand.',
+    median_sale_3bed: 220_000_000,
+    median_rent_3bed: 12_000_000,
+    nightly_3bed:     150_000,
+    occupancy_pct:    62,
+    price_per_sqm:    280_000,
+    dom_avg:          55,
+    yoy_change_pct:   9.8,
+    supply_score:     5,
+    demand_score:     10,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Leasehold'],
+    key_facts:        [
+      'Business district — highest corporate rental demand',
+      'Embassy row drives consistent expat rental demand',
+      'Proximity to Eko Atlantic — appreciation catalyst',
+      'Hotel-grade short-let occupancy year-round',
+    ],
+    best_for:         ['Corporate rental', 'Short-let', 'Mixed-use investment'],
+    risks:            ['Traffic among worst in Lagos', 'Some leasehold complications', 'Noise and commercial activity'],
+  },
+  'lekki': {
+    display:          'Lekki',
+    city:             'Lagos',
+    tier:             'Premium',
+    demand:           'High',
+    description:      'Broad Lekki corridor encompassing Phase 2, Ikota, Chevron, and surrounding areas. Growing middle-to-upper class residential market with improving infrastructure.',
+    median_sale_3bed: 95_000_000,
+    median_rent_3bed: 4_800_000,
+    nightly_3bed:     85_000,
+    occupancy_pct:    58,
+    price_per_sqm:    160_000,
+    dom_avg:          80,
+    yoy_change_pct:   7.1,
+    supply_score:     8,
+    demand_score:     8,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment', 'Gazette'],
+    key_facts:        [
+      'Broadest buyer pool in Lagos — accessible to professionals',
+      'New developments continuously entering market',
+      'Lekki-Epe Expressway infrastructure driving values',
+      'Strong off-plan investment activity',
+    ],
+    best_for:         ['Buy-to-let', 'First investment property', 'Off-plan play'],
+    risks:            ['Flooding risk in some areas — verify drainage', 'Traffic on Lekki-Epe expressway', 'Over-supply risk in some sub-areas'],
+  },
+  'ikota': {
+    display:          'Ikota',
+    city:             'Lagos',
+    tier:             'Premium',
+    demand:           'High',
+    description:      'Dense, established community within the Lekki corridor. Known for Ikota Shopping Complex area. Good balance of value and accessibility.',
+    median_sale_3bed: 90_000_000,
+    median_rent_3bed: 4_500_000,
+    nightly_3bed:     80_000,
+    occupancy_pct:    55,
+    price_per_sqm:    150_000,
+    dom_avg:          85,
+    yoy_change_pct:   6.4,
+    supply_score:     7,
+    demand_score:     7,
+    title_types:      ['Governor\'s Consent', 'Deed of Assignment', 'C of O'],
+    key_facts:        [
+      'Established community — lower vacancy than newer areas',
+      'Good schools and amenities nearby',
+      'Mix of property sizes and price points',
+      'Accessible to VI and Lekki Phase 1 via expressway',
+    ],
+    best_for:         ['Buy-to-let', 'Family rental market', 'Mid-range investment'],
+    risks:            ['Some older stock needs refurbishment', 'Traffic at peak hours', 'Mixed title quality'],
+  },
+  'chevron': {
+    display:          'Chevron',
+    city:             'Lagos',
+    tier:             'Premium',
+    demand:           'High',
+    description:      'Oil and gas sector hub area. Strong corporate and expat rental demand driven by proximity to Chevron Nigeria HQ and other energy companies.',
+    median_sale_3bed: 85_000_000,
+    median_rent_3bed: 4_200_000,
+    nightly_3bed:     75_000,
+    occupancy_pct:    55,
+    price_per_sqm:    140_000,
+    dom_avg:          85,
+    yoy_change_pct:   5.8,
+    supply_score:     6,
+    demand_score:     8,
+    title_types:      ['C of O', 'Governor\'s Consent'],
+    key_facts:        [
+      'Oil sector employment base provides stable rental demand',
+      'Serviced apartment demand from expat workforce',
+      'Good estate development quality',
+      'Close to Lekki Free Trade Zone — future catalyst',
+    ],
+    best_for:         ['Corporate rental', 'Expat accommodation', 'Serviced apartments'],
+    risks:            ['Oil sector volatility affects demand', 'Limited short-let appeal vs Lekki/Ikoyi', 'Some flooding history'],
+  },
+  'ajah': {
+    display:          'Ajah',
+    city:             'Lagos',
+    tier:             'Mid',
+    demand:           'Medium',
+    description:      'Rapidly developing corridor east of Lekki. Increasingly popular with mid-income professionals seeking more space at lower price points than central Lekki.',
+    median_sale_3bed: 65_000_000,
+    median_rent_3bed: 3_200_000,
+    nightly_3bed:     60_000,
+    occupancy_pct:    50,
+    price_per_sqm:    110_000,
+    dom_avg:          100,
+    yoy_change_pct:   9.3,
+    supply_score:     8,
+    demand_score:     7,
+    title_types:      ['Deed of Assignment', 'Governor\'s Consent', 'Gazette', 'C of O'],
+    key_facts:        [
+      'Fastest price appreciation corridor in Lagos 2023-2025',
+      'Attracts buyers priced out of Lekki',
+      'Large land parcels still available for development',
+      'Sangotedo and Abraham Adesanya estate sub-markets growing fast',
+    ],
+    best_for:         ['Capital appreciation play', 'Development land', 'Affordable buy-to-let'],
+    risks:            ['Infrastructure still developing', 'Title fraud risk higher than established areas', 'Traffic and road quality'],
+  },
+  'gbagada': {
+    display:          'Gbagada',
+    city:             'Lagos',
+    tier:             'Mid',
+    demand:           'Medium',
+    description:      'Well-established mainland Lagos community. Popular with middle-class professionals. Stable rental market with lower volatility than Island properties.',
+    median_sale_3bed: 70_000_000,
+    median_rent_3bed: 3_500_000,
+    nightly_3bed:     65_000,
+    occupancy_pct:    50,
+    price_per_sqm:    120_000,
+    dom_avg:          95,
+    yoy_change_pct:   4.2,
+    supply_score:     6,
+    demand_score:     7,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
+    key_facts:        [
+      'Stable middle-class rental base',
+      'Good infrastructure vs mainland alternatives',
+      'Access to Third Mainland Bridge and Lagos Island',
+      'Phase 1 and Phase 2 have distinct price points',
+    ],
+    best_for:         ['Stable buy-to-let', 'Middle-income rental', 'Lower-risk entry'],
+    risks:            ['Lower capital appreciation than Island', 'Flooding in some areas', 'Island vs mainland preference among HNW buyers'],
+  },
+  'yaba': {
+    display:          'Yaba',
+    city:             'Lagos',
+    tier:             'Mid',
+    demand:           'Medium',
+    description:      'Lagos\'s tech and academic hub. Growing startup ecosystem, university presence, and young professional demographic creating new short-let demand.',
+    median_sale_3bed: 60_000_000,
+    median_rent_3bed: 3_000_000,
+    nightly_3bed:     55_000,
+    occupancy_pct:    50,
+    price_per_sqm:    100_000,
+    dom_avg:          100,
+    yoy_change_pct:   6.8,
+    supply_score:     6,
+    demand_score:     6,
+    title_types:      ['C of O', 'Deed of Assignment'],
+    key_facts:        [
+      'Tech hub — co-living and serviced apartment demand growing',
+      'University of Lagos proximity drives student rental market',
+      'Startup and SME office conversions increasing',
+      'Gentrification underway — early appreciation signals',
+    ],
+    best_for:         ['Co-living / serviced apartments', 'Student accommodation', 'Long-term appreciation'],
+    risks:            ['Older building stock in many areas', 'Mixed neighborhood quality', 'Infrastructure gaps'],
+  },
+  'ikeja': {
+    display:          'Ikeja',
+    city:             'Lagos',
+    tier:             'Mid',
+    demand:           'Medium',
+    description:      'Lagos State capital and commercial centre. Government, aviation, and business hub. Stable rental market with consistent corporate demand.',
+    median_sale_3bed: 75_000_000,
+    median_rent_3bed: 3_800_000,
+    nightly_3bed:     70_000,
+    occupancy_pct:    52,
+    price_per_sqm:    130_000,
+    dom_avg:          90,
+    yoy_change_pct:   5.1,
+    supply_score:     7,
+    demand_score:     7,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
+    key_facts:        [
+      'Airport proximity drives short-let and corporate demand',
+      'GRA sub-market significantly higher quality',
+      'Government and civil service stable rental base',
+      'Alausa government area proximity',
+    ],
+    best_for:         ['Corporate rental', 'Airport proximity short-let', 'Government tenant base'],
+    risks:            ['Wide quality variation across sub-areas', 'GRA vs non-GRA price gap significant', 'Some infrastructure aging'],
+  },
+}
+
+// ─── Computation Engine (inline — works without API) ──────────────────────
+
+const MORTGAGE_RATE = 0.22
+const MORTGAGE_YEARS = 15
+const DOWN_PCT = 0.30
+const OPEX = 0.25
+const PLATFORM_FEE = 0.20
+const SHORTLET_OPEX = 0.35
+const MEDIAN_INCOME = 180_000
+
+function computeMetrics(nd: typeof NEIGHBORHOOD_DATA[string], bedrooms: number, price: number) {
+  // Scale benchmarks to bedrooms
+  const bedroomScale = bedrooms <= 1 ? 0.45 : bedrooms === 2 ? 0.72 : bedrooms === 3 ? 1.0 : bedrooms === 4 ? 1.35 : 1.65
+  const annualRent   = nd.median_rent_3bed * bedroomScale
+  const nightly      = nd.nightly_3bed * bedroomScale
+  const occupancy    = nd.occupancy_pct / 100
+
+  // Traditional yield
+  const tradGross = (annualRent / price) * 100
+  const tradNet   = ((annualRent * (1 - OPEX)) / price) * 100
+  const noi       = annualRent * (1 - OPEX)
+
+  // Short-let yield
+  const slGrossAnnual = nightly * occupancy * 365
+  const slNet         = slGrossAnnual * (1 - PLATFORM_FEE) * (1 - SHORTLET_OPEX)
+  const slGrossPct    = (slGrossAnnual / price) * 100
+  const slNetPct      = (slNet / price) * 100
+
+  // Cap rate
+  const capRate = (noi / price) * 100
+
+  // Cash on cash
+  const r       = MORTGAGE_RATE / 12
+  const n       = MORTGAGE_YEARS * 12
+  const loan    = price * (1 - DOWN_PCT)
+  const down    = price * DOWN_PCT
+  const monthly = loan * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
+  const annualCF = annualRent - (annualRent * OPEX) - (monthly * 12)
+  const coc     = (annualCF / down) * 100
+
+  // Affordability
+  const incomeMultiple = (monthly / 0.30) / MEDIAN_INCOME
+  const accessible = incomeMultiple >= 20 ? 'Top 1%' : incomeMultiple >= 10 ? 'Top 5%' : incomeMultiple >= 5 ? 'Top 10%' : 'Top 20%'
+
+  // Strategy
+  let strategy = 'buy_to_let', strategyLabel = 'Buy to Let', reason = `Traditional yield of ${tradNet.toFixed(1)}% net is reasonable for Lagos`
+  if (slNetPct > tradNet + 2) {
+    strategy = 'short_let'; strategyLabel = 'Short-let / Airbnb'
+    reason = `Short-let yields ${slNetPct.toFixed(1)}% net vs ${tradNet.toFixed(1)}% traditional — ${(slNetPct - tradNet).toFixed(1)}pp premium`
+  } else if (nd.yoy_change_pct > 8 && tradNet < 5) {
+    strategy = 'buy_hold'; strategyLabel = 'Buy & Hold'
+    reason = `${nd.yoy_change_pct}% annual appreciation makes capital gain the primary return`
+  } else if (tradNet < 3) {
+    strategy = 'review'; strategyLabel = 'Negotiate Hard'
+    reason = `Yields are thin at median price — push for 15-20% below asking`
+  }
+
+  return { tradGross, tradNet, noi, slGrossPct, slNetPct, slGrossAnnual, slNet, capRate, coc, annualCF, monthly, down, accessible, incomeMultiple, strategy, strategyLabel, reason, annualRent, nightly }
+}
+
+// ─── Formatter ────────────────────────────────────────────────────────────
+
+function fmtN(n: number) {
+  if (n >= 1_000_000_000) return `₦${(n / 1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000)     return `₦${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)         return `₦${(n / 1_000).toFixed(0)}K`
+  return `₦${n.toFixed(0)}`
+}
+
+// ─── Component ────────────────────────────────────────────────────────────
+
+export default function NeighborhoodPage() {
+  const params       = useParams()
+  const searchParams = useSearchParams()
+  const slug         = (params?.slug as string) || ''
+  const q            = searchParams?.get('q') || ''
+
+  const [dark,      setDark]      = useState(true)
+  const [bedrooms,  setBedrooms]  = useState(3)
+  const [price,     setPrice]     = useState(0)
+  const [priceInput,setPriceInput]= useState('')
+
+  const nd = NEIGHBORHOOD_DATA[slug]
+
+  useEffect(() => {
+    if (nd) setPrice(nd.median_sale_3bed)
+  }, [slug, nd])
+
+  const metrics = nd && price > 0 ? computeMetrics(nd, bedrooms, price) : null
+
+  const css = {
+    '--bg':      dark ? '#0F172A' : '#F8FAFC',
+    '--bg2':     dark ? '#1E293B' : '#F1F5F9',
+    '--bg3':     dark ? '#273549' : '#E2E8F0',
+    '--text':    dark ? '#F8FAFC' : '#0F172A',
+    '--text2':   dark ? 'rgba(248,250,252,0.65)' : 'rgba(15,23,42,0.65)',
+    '--text3':   dark ? 'rgba(248,250,252,0.35)' : 'rgba(15,23,42,0.35)',
+    '--purple':  '#5B2EFF',
+    '--purpleL': '#7C5FFF',
+    '--teal':    dark ? '#14B8A6' : '#0D9488',
+    '--tealL':   '#2DD4BF',
+    '--border':  'rgba(91,46,255,0.18)',
+    '--borderL': dark ? 'rgba(248,250,252,0.07)' : 'rgba(15,23,42,0.08)',
+    '--card':    dark ? '#162032' : '#FFFFFF',
+    '--green':   '#22C55E',
+    '--red':     '#EF4444',
+    '--amber':   '#F59E0B',
+  } as React.CSSProperties
+
+  const card = {
+    background: 'var(--card)',
+    border: '1px solid var(--borderL)',
+    borderRadius: 16,
+    padding: '1.5rem',
+    marginBottom: '1rem',
+  }
+
+  const label = {
+    fontSize: '0.68rem', fontWeight: 700,
+    color: 'var(--teal)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.12em',
+    marginBottom: '0.35rem',
+    display: 'block',
+  }
+
+  const bigNum = (val: string, color?: string) => ({
+    fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
+    fontWeight: 800, letterSpacing: '-0.04em',
+    color: color || 'var(--text)',
+    lineHeight: 1,
+  })
+
+  const subText = {
+    fontSize: '0.72rem',
+    color: 'var(--text3)',
+    fontFamily: 'var(--font-mono)' as const,
+    marginTop: '0.25rem',
+  }
+
+  // Not found state
+  if (!nd) return (
+    <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center' }}>
+      <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⌕</div>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.5rem' }}>
+        "{q || slug}" not yet covered
+      </h1>
+      <p style={{ color: 'var(--text2)', marginBottom: '1.5rem', maxWidth: 380, lineHeight: 1.6 }}>
+        We're mapping Lagos neighborhood by neighborhood. This area is on our list.
+      </p>
+      <Link href="/" style={{ background: 'var(--purple)', color: '#fff', padding: '0.75rem 1.5rem', borderRadius: 10, textDecoration: 'none', fontWeight: 600, fontSize: '0.875rem' }}>
+        Search another area →
+      </Link>
+    </div>
+  )
+
+  const demandColor = nd.demand === 'Very High' ? 'var(--green)' : nd.demand === 'High' ? 'var(--teal)' : 'var(--amber)'
+
+  return (
+    <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', transition: 'all 0.3s' }}>
+
+
+
+      {/* ── HERO ── */}
+      <section style={{
+        background: dark ? 'var(--bg2)' : 'var(--bg2)',
+        borderBottom: '1px solid var(--borderL)',
+        padding: '2.5rem 2rem',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', top: -100, right: '10%', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(91,46,255,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+        <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>
+            Lagos · {nd.tier} Area
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h1 style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.04em', lineHeight: 1.05, marginBottom: '0.5rem' }}>
+                {nd.display}
+              </h1>
+              <p style={{ fontSize: '0.925rem', color: 'var(--text2)', maxWidth: 560, lineHeight: 1.65, fontWeight: 300 }}>
+                {nd.description}
+              </p>
+            </div>
+
+            {/* Key badges */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div style={{ background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.08)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>Demand</div>
+                <div style={{ fontWeight: 800, color: demandColor, fontSize: '1rem' }}>{nd.demand}</div>
+              </div>
+              <div style={{ background: dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)', border: '1px solid rgba(91,46,255,0.2)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>YoY Price</div>
+                <div style={{ fontWeight: 800, color: 'var(--purpleL)', fontSize: '1rem' }}>+{nd.yoy_change_pct}%</div>
+              </div>
+              <div style={{ background: dark ? 'rgba(248,250,252,0.05)' : 'rgba(15,23,42,0.04)', border: '1px solid var(--borderL)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>Avg DOM</div>
+                <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: '1rem' }}>{nd.dom_avg}d</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── BODY ── */}
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2.5rem 2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '2rem' }}>
+
+          {/* ── LEFT ── */}
+          <div>
+
+            {/* Scenario inputs */}
+            <div style={{ ...card, background: dark ? 'rgba(91,46,255,0.06)' : 'rgba(91,46,255,0.04)', borderColor: 'rgba(91,46,255,0.2)', marginBottom: '1.5rem' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
+                ◈ Run Your Scenario
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <span style={label}>Property Price (₦)</span>
+                  <input
+                    type="text"
+                    value={priceInput || (price > 0 ? (price / 1_000_000).toFixed(0) + 'M' : '')}
+                    onChange={e => {
+                      setPriceInput(e.target.value)
+                      const num = parseFloat(e.target.value.replace(/[^0-9.]/g, ''))
+                      if (!isNaN(num)) {
+                        // Detect if they typed in millions or full
+                        const val = num > 10000 ? num : num * 1_000_000
+                        setPrice(val)
+                      }
+                    }}
+                    placeholder={`e.g. ${(nd.median_sale_3bed / 1_000_000).toFixed(0)}M`}
+                    style={{
+                      width: '100%', padding: '0.65rem 0.875rem',
+                      background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                      border: '1px solid var(--borderL)',
+                      borderRadius: 8, color: 'var(--text)',
+                      fontSize: '0.9rem', outline: 'none',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  />
+                  <div style={{ ...subText, marginTop: '0.3rem' }}>Type 120M, 85000000, etc.</div>
+                </div>
+                <div>
+                  <span style={label}>Bedrooms</span>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {[1, 2, 3, 4, 5].map(b => (
+                      <button key={b} onClick={() => setBedrooms(b)} style={{
+                        flex: 1, padding: '0.65rem 0',
+                        background: bedrooms === b ? 'var(--purple)' : 'transparent',
+                        color: bedrooms === b ? '#fff' : 'var(--text2)',
+                        border: `1px solid ${bedrooms === b ? 'var(--purple)' : 'var(--borderL)'}`,
+                        borderRadius: 8, cursor: 'pointer',
+                        fontSize: '0.85rem', fontWeight: 600,
+                        transition: 'all 0.15s',
+                      }}>{b}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: '0.875rem', fontSize: '0.75rem', color: 'var(--text3)', lineHeight: 1.5 }}>
+                Metrics recalculate instantly. Rent and short-let rates estimated from verified {nd.display} benchmarks.
+                <span style={{ color: 'var(--teal)', marginLeft: '0.3rem' }}>You can override with your own figures.</span>
+              </div>
+            </div>
+
+            {/* Metrics grid */}
+            {metrics && (
+              <>
+                {/* Yield row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  {/* Traditional */}
+                  <div style={card}>
+                    <span style={label}>Traditional Yield</span>
+                    <div style={bigNum(metrics.tradGross.toFixed(1) + '%', metrics.tradGross >= 7 ? 'var(--green)' : metrics.tradGross >= 5 ? 'var(--amber)' : 'var(--red)')}>
+                      {metrics.tradGross.toFixed(2)}%
+                    </div>
+                    <div style={subText}>Net: {metrics.tradNet.toFixed(2)}%</div>
+                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
+                      Est. rent: {fmtN(metrics.annualRent)}/yr
+                    </div>
+                  </div>
+
+                  {/* Short-let */}
+                  <div style={card}>
+                    <span style={label}>Short-let / Airbnb Yield</span>
+                    <div style={bigNum(metrics.slGrossPct.toFixed(1) + '%', metrics.slGrossPct >= 15 ? 'var(--green)' : metrics.slGrossPct >= 10 ? 'var(--amber)' : 'var(--text)')}>
+                      {metrics.slGrossPct.toFixed(2)}%
+                    </div>
+                    <div style={subText}>Net: {metrics.slNetPct.toFixed(2)}%</div>
+                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
+                      {fmtN(metrics.nightly)}/night · {nd.occupancy_pct}% occ.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cap rate + CoC */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div style={card}>
+                    <span style={label}>Cap Rate</span>
+                    <div style={bigNum(metrics.capRate.toFixed(2) + '%')}>
+                      {metrics.capRate.toFixed(2)}%
+                    </div>
+                    <div style={subText}>NOI: {fmtN(metrics.noi)}/yr</div>
+                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
+                      After {(OPEX * 100).toFixed(0)}% operating expenses
+                    </div>
+                  </div>
+
+                  <div style={card}>
+                    <span style={label}>Cash-on-Cash Return</span>
+                    <div style={bigNum((metrics.coc > 0 ? '+' : '') + metrics.coc.toFixed(1) + '%', metrics.coc > 0 ? 'var(--green)' : 'var(--red)')}>
+                      {metrics.coc > 0 ? '+' : ''}{metrics.coc.toFixed(2)}%
+                    </div>
+                    <div style={subText}>
+                      {metrics.coc < 0 ? 'Negative — Nigerian mortgage rates (22%) make leveraged buy challenging' : 'Positive cashflow after mortgage'}
+                    </div>
+                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
+                      Monthly mortgage: {fmtN(metrics.monthly)} · 30% down
+                    </div>
+                  </div>
+                </div>
+
+                {/* Market benchmarks */}
+                <div style={card}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
+                    Market Benchmarks · {nd.display}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                    {[
+                      { label: 'Median 3-Bed Sale', value: fmtN(nd.median_sale_3bed) },
+                      { label: 'Median Annual Rent', value: fmtN(nd.median_rent_3bed) },
+                      { label: 'Price / sqm', value: fmtN(nd.price_per_sqm) },
+                      { label: 'STR Nightly (3-Bed)', value: fmtN(nd.nightly_3bed) },
+                      { label: 'STR Occupancy', value: `${nd.occupancy_pct}%` },
+                      { label: 'YoY Appreciation', value: `+${nd.yoy_change_pct}%` },
+                    ].map(m => (
+                      <div key={m.label} style={{ padding: '0.875rem', background: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>{m.label}</div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>{m.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Supply/Demand */}
+                <div style={card}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
+                    Supply / Demand Signals
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                    {[
+                      { label: 'Supply (Inventory)', score: nd.supply_score, invert: true },
+                      { label: 'Buyer Demand', score: nd.demand_score, invert: false },
+                    ].map(s => (
+                      <div key={s.label}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text2)', fontWeight: 500 }}>{s.label}</span>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{s.score}/10</span>
+                        </div>
+                        <div style={{ height: 6, background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', borderRadius: 100, overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%', width: `${s.score * 10}%`,
+                            background: s.invert
+                              ? s.score > 7 ? 'var(--amber)' : 'var(--green)'
+                              : s.score > 7 ? 'var(--green)' : 'var(--amber)',
+                            borderRadius: 100,
+                            transition: 'width 0.6s ease',
+                          }} />
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginTop: '0.3rem' }}>
+                          {s.invert ? (s.score > 7 ? 'High inventory — more negotiation room' : 'Low inventory — competitive') : (s.score > 7 ? 'Strong demand — faster sales' : 'Moderate demand')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </>
+            )}
+
+            {/* Key facts */}
+            <div style={card}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1rem' }}>
+                Market Intelligence
+              </div>
+              {nd.key_facts.map((f, i) => (
+                <div key={i} style={{ display: 'flex', gap: '0.75rem', padding: '0.6rem 0', borderBottom: i < nd.key_facts.length - 1 ? '1px solid var(--borderL)' : 'none' }}>
+                  <span style={{ color: 'var(--teal)', fontSize: '0.7rem', flexShrink: 0, marginTop: 3 }}>◆</span>
+                  <span style={{ fontSize: '0.875rem', color: 'var(--text2)', lineHeight: 1.5 }}>{f}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Title types */}
+            <div style={card}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1rem' }}>
+                Common Title Types
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {nd.title_types.map(t => (
+                  <span key={t} style={{
+                    padding: '0.3rem 0.75rem',
+                    background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.08)',
+                    border: '1px solid rgba(20,184,166,0.25)',
+                    borderRadius: 100, fontSize: '0.75rem',
+                    color: 'var(--teal)', fontWeight: 600,
+                  }}>
+                    ✓ {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── RIGHT COLUMN ── */}
+          <div>
+
+            {/* Strategy signal */}
+            {metrics && (
+              <div style={{
+                background: dark ? 'linear-gradient(135deg, rgba(91,46,255,0.15) 0%, rgba(20,184,166,0.08) 100%)' : 'linear-gradient(135deg, rgba(91,46,255,0.06) 0%, rgba(20,184,166,0.04) 100%)',
+                border: '1px solid rgba(91,46,255,0.25)',
+                borderRadius: 16, padding: '1.5rem',
+                marginBottom: '1rem',
+              }}>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block' }} />
+                  Zalone Strategy Signal
+                </div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text)', marginBottom: '0.4rem', letterSpacing: '-0.02em' }}>
+                  {metrics.strategyLabel}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text2)', lineHeight: 1.55 }}>
+                  {metrics.reason}
+                </div>
+              </div>
+            )}
+
+            {/* Affordability */}
+            {metrics && (
+              <div style={card}>
+                <span style={label}>Buyer Profile</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text)', marginBottom: '0.25rem' }}>
+                  {metrics.accessible} of Lagos earners
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text2)', lineHeight: 1.5, marginBottom: '0.875rem' }}>
+                  Requires ~{fmtN(metrics.monthly / 0.30)}/month income at 30% housing ratio
+                </div>
+                <div style={{ padding: '0.75rem', background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 10, fontSize: '0.78rem', color: 'var(--text3)', lineHeight: 1.5 }}>
+                  {metrics.incomeMultiple >= 10
+                    ? 'Target: Diaspora buyers, HNW individuals, institutional investors'
+                    : metrics.incomeMultiple >= 5
+                    ? 'Target: Senior professionals, dual-income households, SME owners'
+                    : 'Target: Mid-senior professionals, young executives'}
+                </div>
+              </div>
+            )}
+
+            {/* Best for / Risks */}
+            <div style={card}>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <span style={label}>Best For</span>
+                {nd.best_for.map((b, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '0.5rem', padding: '0.4rem 0', alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--green)', fontSize: '0.75rem', marginTop: 2, flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>{b}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ borderTop: '1px solid var(--borderL)', paddingTop: '1.25rem' }}>
+                <span style={{ ...label, color: 'var(--red)' }}>Risk Factors</span>
+                {nd.risks.map((r, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '0.5rem', padding: '0.4rem 0', alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--amber)', fontSize: '0.75rem', marginTop: 2, flexShrink: 0 }}>⚠</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Data note */}
+            <div style={{ padding: '1rem', background: dark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)', border: '1px solid var(--borderL)', borderRadius: 12, fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'var(--font-mono)', lineHeight: 1.6 }}>
+              Benchmarks from verified Lagos market research. Metrics computed from your scenario inputs. Always conduct independent due diligence. Data: Manop Intelligence.
+            </div>
+
+            {/* Agency CTA */}
+            <div style={{ marginTop: '1rem', background: dark ? 'rgba(91,46,255,0.08)' : 'rgba(91,46,255,0.04)', border: '1px solid rgba(91,46,255,0.2)', borderRadius: 16, padding: '1.25rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5rem' }}>
+                Agency in {nd.display}?
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text2)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                Get free intelligence reports on your listings. Investors see your properties with verified data.
+              </div>
+              <a href="mailto:partners@manop.africa" style={{ display: 'block', background: 'var(--purple)', color: '#fff', padding: '0.65rem 1rem', borderRadius: 10, textDecoration: 'none', fontWeight: 600, fontSize: '0.82rem' }}>
+                Become a Founding Partner →
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        a { color: inherit; }
+        input { transition: border-color 0.15s; }
+        input:focus { border-color: var(--purple) !important; outline: none; }
+        @media (max-width: 768px) {
+          div[style*="grid-template-columns: 1fr 380px"] {
+            display: block !important;
+          }
+          div[style*="grid-template-columns: repeat(3, 1fr)"] {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+        }
+      `}</style>
+    </div>
+  )
+}
+</file>
+
+<file path="app/property/[id]/page.tsx">
+import Link from 'next/link'
+import { getProperty } from '../../../lib/supabase'
+import { getIntelligenceReport, fmtNGN, yieldColor, positionLabel } from '../../../lib/intelligence'
+import { notFound } from 'next/navigation'
+
+export const revalidate = 60
+
+function IntelRow({ label, value, sub, color }: {
+  label: string; value: string; sub?: string; color?: string
+}) {
+  return (
+    <div className="intel-row">
+      <div>
+        <div className="intel-label">{label}</div>
+        {sub && <div className="intel-sub">{sub}</div>}
+      </div>
+      <div className="intel-value" style={{ color: color || 'var(--white)' }}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+export default async function PropertyDetail({ params }: { params: { id: string } }) {
+  const p = await getProperty(params.id)
+  if (!p) notFound()
+
+  const raw        = (p.raw_data || {}) as Record<string, unknown>
+  const agentPhone = ((p.agent_phone || String(raw['agent_phone'] || '')) as string).replace(/\D/g, '')
+  const features   = Array.isArray(raw['features']) ? raw['features'] as string[] : []
+  const mediaUrls  = Array.isArray(raw['media_urls']) ? raw['media_urls'] as string[] : []
+  const location   = [p.neighborhood, p.city].filter(Boolean).join(', ')
+  const isRent     = p.listing_type === 'for-rent' || p.listing_type === 'short-let'
+
+  const intel = await getIntelligenceReport({
+    price:         p.price_local || 0,
+    bedrooms:      p.bedrooms || 3,
+    neighborhood:  p.neighborhood || undefined,
+    city:          p.city || 'Lagos',
+    property_type: p.property_type || undefined,
+    size_sqm:      p.size_sqm || undefined,
+    listing_type:  p.listing_type || undefined,
+  })
+
+  const pricePos = intel ? positionLabel(intel.price_vs_market.price_position) : null
+
+  return (
+    <>
+      {/* ── HERO ── */}
+      <section className="detail-hero">
+        <div className="detail-inner">
+          <Link href="/search" style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+            fontSize: '0.8rem', fontWeight: 500, color: 'var(--white-muted)',
+            marginBottom: '1.5rem', transition: 'color 0.15s',
+          }}>
+            ← Back to Properties
+          </Link>
+
+          <div style={{
+            display: 'flex', justifyContent: 'space-between',
+            alignItems: 'flex-start', flexWrap: 'wrap', gap: '1.5rem',
+          }}>
+            <div>
+              {/* Source + location tag */}
+              <div style={{
+                display: 'flex', gap: '0.5rem',
+                marginBottom: '1rem', flexWrap: 'wrap',
+              }}>
+                <span className="pill">{p.source_type || 'Agent Verified'}</span>
+                {location && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                    background: 'rgba(20,184,166,0.1)',
+                    border: '1px solid var(--border-teal)',
+                    borderRadius: 100, padding: '0.25rem 0.75rem',
+                    fontSize: '0.72rem', fontWeight: 600, color: 'var(--teal)',
+                  }}>
+                    📍 {location}
+                  </span>
+                )}
+              </div>
+
+              <h1 className="detail-title">
+                {p.bedrooms ? `${p.bedrooms}-Bedroom ` : ''}
+                {p.property_type || 'Property'}
+                {p.neighborhood ? ` in ${p.neighborhood}` : ''}
+              </h1>
+
+              <div className="detail-price">
+                {fmtNGN(p.price_local)}
+                {isRent && (
+                  <span style={{ fontSize: '1rem', color: 'var(--white-muted)', fontWeight: 400 }}>
+                    {' '}/ month
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Price position */}
+            {pricePos && (
+              <div style={{
+                background: `${pricePos.color}12`,
+                border: `1px solid ${pricePos.color}40`,
+                borderRadius: 16, padding: '1rem 1.5rem',
+                textAlign: 'center', minWidth: 160,
+              }}>
+                <div style={{
+                  fontSize: '0.65rem', fontWeight: 700,
+                  color: 'var(--white-dim)',
+                  textTransform: 'uppercase', letterSpacing: '0.1em',
+                  marginBottom: '0.35rem',
+                }}>
+                  vs Market
+                </div>
+                <div style={{
+                  fontSize: '1.1rem', fontWeight: 800,
+                  color: pricePos.color, letterSpacing: '-0.02em',
+                }}>
+                  {pricePos.label}
+                </div>
+                {intel && (
+                  <div style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.72rem', color: 'var(--white-muted)',
+                    marginTop: '0.25rem',
+                  }}>
+                    {intel.price_vs_market.pct_vs_median > 0 ? '+' : ''}
+                    {intel.price_vs_market.pct_vs_median}% vs median
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* ── IMAGES ── */}
+      {mediaUrls.length > 0 && (
+        <div style={{ maxWidth: 1200, margin: '1.5rem auto 0', padding: '0 2rem' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: mediaUrls.length === 1 ? '1fr'
+              : mediaUrls.length === 2 ? '1fr 1fr'
+              : '2fr 1fr 1fr',
+            gap: '0.5rem', borderRadius: 16, overflow: 'hidden',
+          }}>
+            {mediaUrls.slice(0, 3).map((url, i) => (
+              <a key={i} href={url} target="_blank" rel="noopener">
+                <img src={url} alt={`Photo ${i+1}`} style={{
+                  width: '100%',
+                  height: i === 0 ? 320 : 155,
+                  objectFit: 'cover', display: 'block',
+                }} />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── BODY ── */}
+      <div className="detail-body">
+
+        {/* ── LEFT ── */}
+        <div>
+          <div className="detail-section">
+            <div className="detail-section-title">Property Details</div>
+            {([
+              ['Type',       p.property_type],
+              ['Bedrooms',   p.bedrooms],
+              ['Bathrooms',  p.bathrooms],
+              ['Size',       p.size_sqm ? `${p.size_sqm} m²` : null],
+              ['Location',   location],
+              ['Listing',    p.listing_type?.replace(/-/g, ' ')],
+            ] as [string, unknown][]).filter(r => r[1] != null && r[1] !== '').map(([l, v]) => (
+              <div key={l as string} className="detail-row">
+                <span className="lbl">{l as string}</span>
+                <span className="val">{String(v)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="detail-section">
+            <div className="detail-section-title">Legal &amp; Title</div>
+            {p.title_document_type ? (
+              <div className="detail-row">
+                <span className="lbl">Document type</span>
+                <span className="val" style={{ color: 'var(--teal)' }}>
+                  ✓ {p.title_document_type}
+                </span>
+              </div>
+            ) : (
+              <p style={{ fontSize: '0.85rem', color: 'var(--white-muted)' }}>
+                Title information pending verification.
+              </p>
+            )}
+          </div>
+
+          {features.length > 0 && (
+            <div className="detail-section">
+              <div className="detail-section-title">Features &amp; Amenities</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {features.map((f, i) => (
+                  <div key={i} className="feature-tag">{f}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{
+            padding: '1rem 1.25rem',
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid var(--border-light)',
+            borderRadius: 12,
+            fontSize: '0.75rem', color: 'var(--white-dim)',
+            lineHeight: 1.6,
+            fontFamily: 'var(--font-mono)',
+          }}>
+            Data structured by Manop Intelligence. Metrics computed from verified
+            Lagos neighborhood benchmarks. Conduct independent due diligence before investing.
+          </div>
+        </div>
+
+        {/* ── RIGHT ── */}
+        <div>
+          {intel ? (
+            <>
+              {/* Strategy */}
+              <div className="rec-box">
+                <div className="rec-label">Manop Strategy Signal</div>
+                <div className="rec-strategy">{intel.recommendation.strategy_label}</div>
+                <div className="rec-reason">{intel.recommendation.reason}</div>
+              </div>
+
+              {/* Yield */}
+              <div className="intel-panel">
+                <div className="intel-panel-header">
+                  <div className="intel-panel-title">Yield Analysis</div>
+                </div>
+                <IntelRow
+                  label="Traditional Rental Yield"
+                  value={`${intel.traditional_rental.gross_pct}%`}
+                  sub={`Net ${intel.traditional_rental.net_pct}% · ${fmtNGN(intel.traditional_rental.annual_rent)}/yr`}
+                  color={yieldColor(intel.traditional_rental.gross_pct)}
+                />
+                <IntelRow
+                  label="Short-let / Airbnb Yield"
+                  value={`${intel.shortlet.gross_pct}%`}
+                  sub={`Net ${intel.shortlet.net_pct}% · ₦${(intel.shortlet.nightly_rate/1000).toFixed(0)}K/night · ${intel.shortlet.occupancy_rate}% occ.`}
+                  color={yieldColor(intel.shortlet.gross_pct)}
+                />
+                <IntelRow
+                  label="Cap Rate"
+                  value={`${intel.cap_rate.cap_rate_pct}%`}
+                  sub={`NOI ${fmtNGN(intel.cap_rate.noi_annual)}/yr`}
+                />
+              </div>
+
+              {/* Investment */}
+              <div className="intel-panel">
+                <div className="intel-panel-header">
+                  <div className="intel-panel-title">Investment Metrics</div>
+                </div>
+                <IntelRow
+                  label="Cash-on-Cash Return"
+                  value={`${intel.cash_on_cash.coc_pct > 0 ? '+' : ''}${intel.cash_on_cash.coc_pct}%`}
+                  sub="30% down · 22% mortgage · 15yr term"
+                  color={intel.cash_on_cash.coc_pct > 0 ? 'var(--green)' : 'var(--red)'}
+                />
+                <IntelRow
+                  label="Monthly Mortgage"
+                  value={fmtNGN(intel.cash_on_cash.monthly_mortgage)}
+                  sub={`Down payment: ${fmtNGN(intel.cash_on_cash.down_payment)}`}
+                />
+              </div>
+
+              {/* Market */}
+              <div className="intel-panel">
+                <div className="intel-panel-header">
+                  <div className="intel-panel-title">Market Position</div>
+                </div>
+                <IntelRow
+                  label="Area Median Price"
+                  value={fmtNGN(intel.price_vs_market.median_price_area)}
+                  sub={`${intel.area_benchmark.area_tier} · ${intel.area_benchmark.demand_level} demand`}
+                />
+                <IntelRow
+                  label="Est. Days on Market"
+                  value={`${intel.days_on_market.estimated_dom} days`}
+                  sub={intel.days_on_market.dom_range}
+                />
+                <IntelRow
+                  label="Buyer Profile"
+                  value={intel.affordability.accessible_to}
+                  sub={intel.affordability.buyer_profile}
+                />
+              </div>
+            </>
+          ) : (
+            <div style={{
+              background: 'var(--navy-card)',
+              border: '1px solid var(--border-light)',
+              borderRadius: 16, padding: '2rem',
+              textAlign: 'center',
+            }}>
+              <div className="intel-badge" style={{ justifyContent: 'center', marginBottom: '0.75rem' }}>
+                Intelligence API Offline
+              </div>
+              <p style={{ fontSize: '0.85rem', color: 'var(--white-muted)', lineHeight: 1.5 }}>
+                Start the Manop intelligence service to see yield analysis.
+              </p>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.68rem', color: 'var(--white-dim)',
+                marginTop: '1rem', padding: '0.75rem',
+                background: 'rgba(0,0,0,0.3)', borderRadius: 8,
+              }}>
+                uvicorn ...roi_analysis_service.main:app --port 8002
+              </div>
+            </div>
+          )}
+
+          {/* Contact */}
+          <div className="detail-section" style={{ marginTop: '1rem' }}>
+            <div className="detail-section-title">Contact Agent</div>
+            {agentPhone ? (
+              <>
+                <a
+                  href={`https://wa.me/${agentPhone}`}
+                  target="_blank" rel="noopener"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    gap: '0.5rem', background: '#22C55E', color: 'white',
+                    padding: '0.75rem 1.25rem', borderRadius: 10,
+                    fontWeight: 600, fontSize: '0.875rem',
+                    textDecoration: 'none', width: '100%',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  WhatsApp Agent
+                </a>
+                <Link
+                  href={`https://manop-mls.vercel.app/agent/${agentPhone}`}
+                  target="_blank"
+                  style={{
+                    display: 'block', textAlign: 'center',
+                    fontSize: '0.8rem', color: 'var(--lavender)',
+                    paddingTop: '0.25rem',
+                  }}
+                >
+                  View agent portfolio →
+                </Link>
+              </>
+            ) : (
+              <p style={{ fontSize: '0.85rem', color: 'var(--white-muted)' }}>
+                Contact available via Manop platform.
+              </p>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </>
+  )
+}
+
+export async function generateMetadata({ params }: { params: { id: string } }) {
+  const p = await getProperty(params.id)
+  if (!p) return { title: 'Property — Zalone' }
+  const loc  = p.neighborhood || p.city || 'Lagos'
+  const beds = p.bedrooms ? `${p.bedrooms}-Bed ` : ''
+  return {
+    title: `${beds}${p.property_type || 'Property'} in ${loc} — Zalone`,
+    description: `Intelligence report: yield analysis, cap rate, market position. Powered by Manop.`,
+  }
+}
+</file>
+
+<file path="app/search/page.tsx">
+'use client'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { supabase } from '../../lib/supabase'
+import type { ZaloneProperty } from '../../lib/supabase'
+import { fmtNGN } from '../../lib/intelligence'
+
+const TYPES = ['All', 'apartment', 'duplex', 'detached', 'land', 'commercial']
+const BEDS  = ['Any', '1', '2', '3', '4', '5+']
+const AREAS = ['All', 'Lekki', 'Ikoyi', 'Victoria Island', 'Ajah', 'Ikeja', 'Yaba', 'Abuja']
+
+export default function SearchPage() {
+  const [listings, setListings] = useState<ZaloneProperty[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [area,     setArea]     = useState('All')
+  const [type,     setType]     = useState('All')
+  const [beds,     setBeds]     = useState('Any')
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      let q = supabase
+        .from('properties').select('*')
+        .order('created_at', { ascending: false })
+        .limit(48)
+
+      if (area !== 'All')  q = q.ilike('neighborhood', `%${area}%`)
+      if (type !== 'All')  q = q.eq('property_type', type)
+      if (beds !== 'Any') {
+        const b = parseInt(beds)
+        if (beds === '5+') q = q.gte('bedrooms', 5)
+        else q = q.eq('bedrooms', b)
+      }
+
+      const { data } = await q
+      setListings((data as ZaloneProperty[]) || [])
+      setLoading(false)
+    }
+    load()
+  }, [area, type, beds])
+
+  return (
+    <>
+      <section style={{
+        background: 'var(--ink-mid)',
+        borderBottom: '1px solid var(--border-light)',
+        padding: '2.5rem 2rem',
+      }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.65rem', color: 'var(--gold)',
+            letterSpacing: '0.12em', textTransform: 'uppercase',
+            marginBottom: '0.5rem',
+          }}>
+            Property Intelligence
+          </div>
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '2rem', fontWeight: 700,
+            color: 'var(--cream)', letterSpacing: '-0.03em',
+            marginBottom: '0.4rem',
+          }}>
+            Lagos Properties
+          </h1>
+          <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.78rem', color: 'var(--mist)' }}>
+            {loading ? 'Loading...' : `${listings.length} listings with Manop intelligence`}
+          </p>
+        </div>
+      </section>
+
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '2rem' }}>
+        {/* Filters */}
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ marginBottom: '0.75rem' }}>
+            <div style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.65rem', color: 'var(--mist)',
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              marginBottom: '0.4rem',
+            }}>
+              Area
+            </div>
+            <div className="filter-bar">
+              {AREAS.map(a => (
+                <button key={a} className={`filter-chip ${area === a ? 'active' : ''}`}
+                  onClick={() => setArea(a)}>{a}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.65rem', color: 'var(--mist)',
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                marginBottom: '0.4rem',
+              }}>
+                Type
+              </div>
+              <div className="filter-bar" style={{ marginBottom: 0 }}>
+                {TYPES.map(t => (
+                  <button key={t} className={`filter-chip ${type === t ? 'active' : ''}`}
+                    onClick={() => setType(t)}>{t}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: '0.65rem', color: 'var(--mist)',
+                letterSpacing: '0.1em', textTransform: 'uppercase',
+                marginBottom: '0.4rem',
+              }}>
+                Bedrooms
+              </div>
+              <div className="filter-bar" style={{ marginBottom: 0 }}>
+                {BEDS.map(b => (
+                  <button key={b} className={`filter-chip ${beds === b ? 'active' : ''}`}
+                    onClick={() => setBeds(b)}>{b}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Grid */}
+        {loading ? (
+          <div style={{
+            textAlign: 'center', padding: '4rem',
+            fontFamily: 'var(--font-mono)', fontSize: '0.82rem',
+            color: 'var(--mist)',
+          }}>
+            Loading intelligence...
+          </div>
+        ) : listings.length > 0 ? (
+          <div className="prop-grid">
+            {listings.map(p => {
+              const loc = [p.neighborhood, p.city].filter(Boolean).join(', ')
+              return (
+                <Link key={p.id} href={`/property/${p.id}`} style={{ textDecoration: 'none' }}>
+                  <div className="prop-card">
+                    <div className="prop-card-header">
+                      <div className="prop-card-type">
+                        {p.bedrooms ? `${p.bedrooms}-Bed ` : ''}{p.property_type || 'Property'}
+                      </div>
+                      <div className="yield-badge" style={{
+                        color: 'var(--gold)', borderColor: 'var(--gold-dim)',
+                        fontSize: '0.65rem',
+                      }}>
+                        Intel →
+                      </div>
+                    </div>
+                    <div className="prop-card-body">
+                      <div className="prop-price">{fmtNGN(p.price_local)}</div>
+                      {loc && <div className="prop-location">📍 {loc}</div>}
+                      <div className="prop-specs">
+                        {p.bedrooms  && <span>{p.bedrooms} bed</span>}
+                        {p.bathrooms && <span>{p.bathrooms} bath</span>}
+                        {p.size_sqm  && <span>{p.size_sqm}m²</span>}
+                      </div>
+                      {p.title_document_type && (
+                        <div style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: '0.68rem', color: 'var(--gold)',
+                          marginTop: '0.5rem',
+                        }}>
+                          ◆ {p.title_document_type}
+                        </div>
+                      )}
+                    </div>
+                    <div className="prop-card-footer">
+                      <span className="source-tag">{p.source_type || 'verified'}</span>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.65rem', color: 'var(--gold)' }}>
+                        View Report →
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        ) : (
+          <div style={{
+            textAlign: 'center', padding: '4rem',
+            fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--mist)',
+          }}>
+            No listings match these filters.
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
+</file>
+
+<file path="app/globals.css">
+/* ── Zalone Brand System ─────────────────────────────────────────────────── */
+:root {
+  /* Brand Colors */
+  --purple:       #5B2EFF;
+  --purple-light: #7C5FFF;
+  --purple-dim:   #3D1FCC;
+  --lavender:     #A78BFA;
+  --lavender-dim: #7C66C4;
+  --teal:         #14B8A6;
+  --teal-light:   #2DD4BF;
+  --teal-dim:     #0D9488;
+
+  /* Backgrounds */
+  --navy:         #0F172A;
+  --navy-mid:     #1E293B;
+  --navy-soft:    #273549;
+  --navy-card:    #162032;
+
+  /* Text */
+  --white:        #FFFFFF;
+  --white-muted:  rgba(255,255,255,0.65);
+  --white-dim:    rgba(255,255,255,0.35);
+
+  /* Semantic */
+  --green:        #10B981;
+  --amber:        #F59E0B;
+  --red:          #EF4444;
+
+  /* Borders */
+  --border:       rgba(91,46,255,0.2);
+  --border-light: rgba(255,255,255,0.07);
+  --border-teal:  rgba(20,184,166,0.25);
+
+  /* Typography */
+  --font-display: 'Inter', -apple-system, sans-serif;
+  --font-body:    'Inter', -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--navy);
+  color: var(--white);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: var(--font-body); }
+
+/* ── NAV ── */
+.nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(15,23,42,0.88);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border-light);
+  padding: 0 2rem;
+  display: flex; align-items: center; justify-content: space-between;
+  height: 68px;
+}
+
+.nav-brand {
+  display: flex; align-items: center; gap: 0.6rem;
+}
+
+.nav-logo-z {
+  width: 36px; height: 36px;
+  background: var(--purple);
+  border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+
+.nav-logo-z::after {
+  content: 'Z';
+  font-size: 1.1rem; font-weight: 700;
+  color: white; letter-spacing: -0.02em;
+}
+
+.nav-brand-name {
+  font-size: 1.1rem; font-weight: 700;
+  color: var(--white); letter-spacing: -0.02em;
+}
+
+.nav-brand-sub {
+  font-size: 0.6rem; font-weight: 400;
+  color: var(--teal); letter-spacing: 0.12em;
+  text-transform: uppercase;
+  display: block; margin-top: -2px;
+}
+
+.nav-links {
+  display: flex; gap: 0.25rem; list-style: none; align-items: center;
+}
+
+.nav-links a {
+  font-size: 0.85rem; font-weight: 500;
+  color: var(--white-muted);
+  padding: 0.45rem 0.875rem;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.nav-links a:hover { color: var(--white); background: rgba(255,255,255,0.06); }
+
+.nav-cta {
+  background: var(--purple) !important;
+  color: var(--white) !important;
+  padding: 0.45rem 1rem !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  font-size: 0.82rem !important;
+  transition: background 0.15s !important;
+}
+
+.nav-cta:hover { background: var(--purple-light) !important; }
+
+/* ── HERO ── */
+.hero {
+  position: relative; overflow: hidden;
+  padding: 7rem 2rem 6rem;
+  background: var(--navy);
+}
+
+.hero-glow {
+  position: absolute;
+  width: 700px; height: 700px;
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
+}
+
+.hero-glow-1 {
+  top: -200px; left: -100px;
+  background: rgba(91,46,255,0.25);
+}
+
+.hero-glow-2 {
+  bottom: -300px; right: -100px;
+  background: rgba(20,184,166,0.15);
+}
+
+/* ── PROPERTY CARD ── */
+.prop-card {
+  background: var(--navy-card);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+
+.prop-card:hover {
+  border-color: rgba(91,46,255,0.4);
+  transform: translateY(-3px);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.3), 0 0 0 1px rgba(91,46,255,0.15);
+}
+
+.prop-card-header {
+  background: var(--navy-mid);
+  padding: 1rem 1.25rem;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.prop-card-type {
+  font-size: 0.75rem; font-weight: 600;
+  color: var(--white-muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+
+.intel-badge {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  background: rgba(20,184,166,0.12);
+  border: 1px solid var(--border-teal);
+  color: var(--teal);
+  font-size: 0.68rem; font-weight: 600;
+  padding: 0.2rem 0.6rem; border-radius: 100px;
+  letter-spacing: 0.04em; text-transform: uppercase;
+}
+
+.prop-card-body { padding: 1.25rem; }
+
+.prop-price {
+  font-size: 1.5rem; font-weight: 700;
+  color: var(--white); margin-bottom: 0.35rem;
+  letter-spacing: -0.03em;
+}
+
+.prop-location {
+  font-size: 0.82rem; color: var(--white-muted);
+  margin-bottom: 0.875rem;
+  display: flex; align-items: center; gap: 0.35rem;
+}
+
+.prop-specs {
+  display: flex; gap: 0.75rem; flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.72rem; color: var(--white-dim);
+  margin-bottom: 1rem;
+}
+
+.prop-specs span {
+  background: var(--navy-soft);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.prop-card-footer {
+  padding: 0.875rem 1.25rem;
+  border-top: 1px solid var(--border-light);
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+.source-tag {
+  font-size: 0.68rem; font-weight: 500;
+  color: var(--white-dim);
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+
+.view-link {
+  font-size: 0.78rem; font-weight: 600;
+  color: var(--purple-light);
+  display: flex; align-items: center; gap: 0.25rem;
+}
+
+/* ── INTEL PANEL ── */
+.intel-panel {
+  background: var(--navy-card);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.intel-panel-header {
+  background: linear-gradient(135deg, rgba(91,46,255,0.2) 0%, rgba(20,184,166,0.1) 100%);
+  padding: 0.875rem 1.25rem;
+  display: flex; align-items: center; gap: 0.5rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.intel-panel-title {
+  font-size: 0.7rem; font-weight: 700;
+  color: var(--lavender);
+  text-transform: uppercase; letter-spacing: 0.12em;
+}
+
+.intel-row {
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid var(--border-light);
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+.intel-row:last-child { border-bottom: none; }
+
+.intel-label {
+  font-size: 0.75rem; font-weight: 500;
+  color: var(--white-muted);
+}
+
+.intel-sub {
+  font-size: 0.65rem; color: var(--white-dim);
+  font-family: var(--font-mono);
+  margin-top: 0.15rem;
+}
+
+.intel-value {
+  font-size: 1.1rem; font-weight: 700;
+  color: var(--white); text-align: right;
+}
+
+/* ── RECOMMENDATION ── */
+.rec-box {
+  background: linear-gradient(135deg, rgba(91,46,255,0.15) 0%, rgba(20,184,166,0.08) 100%);
+  border: 1px solid rgba(91,46,255,0.3);
+  border-radius: 16px; padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.rec-label {
+  font-size: 0.65rem; font-weight: 700;
+  color: var(--teal); text-transform: uppercase;
+  letter-spacing: 0.12em; margin-bottom: 0.5rem;
+  display: flex; align-items: center; gap: 0.35rem;
+}
+
+.rec-label::before {
+  content: '';
+  display: inline-block; width: 6px; height: 6px;
+  background: var(--teal); border-radius: 50%;
+}
+
+.rec-strategy {
+  font-size: 1.1rem; font-weight: 700;
+  color: var(--white); margin-bottom: 0.4rem;
+}
+
+.rec-reason { font-size: 0.85rem; color: var(--white-muted); line-height: 1.5; }
+
+/* ── GRID ── */
+.prop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.25rem;
+}
+
+/* ── DETAIL ── */
+.detail-hero {
+  background: var(--navy-mid);
+  border-bottom: 1px solid var(--border-light);
+  padding: 3rem 2rem 2.5rem;
+}
+
+.detail-inner { max-width: 1200px; margin: 0 auto; }
+
+.detail-title {
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  font-weight: 800; color: var(--white);
+  letter-spacing: -0.04em; line-height: 1.1;
+  margin-bottom: 0.75rem;
+}
+
+.detail-price {
+  font-size: 2rem; font-weight: 800;
+  color: var(--purple-light);
+  letter-spacing: -0.03em;
+}
+
+.detail-body {
+  max-width: 1200px; margin: 0 auto;
+  padding: 2.5rem 2rem;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 2rem;
+}
+
+.detail-section {
+  background: var(--navy-card);
+  border: 1px solid var(--border-light);
+  border-radius: 16px; padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.detail-section-title {
+  font-size: 0.68rem; font-weight: 700;
+  color: var(--teal); text-transform: uppercase;
+  letter-spacing: 0.12em; margin-bottom: 1rem;
+}
+
+.detail-row {
+  display: flex; justify-content: space-between;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border-light);
+  font-size: 0.875rem;
+}
+
+.detail-row:last-child { border-bottom: none; }
+.detail-row .lbl { color: var(--white-muted); }
+.detail-row .val { color: var(--white); font-weight: 600; }
+
+/* ── FILTER CHIP ── */
+.filter-bar {
+  display: flex; gap: 0.5rem; flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.filter-chip {
+  padding: 0.4rem 1rem;
+  border: 1px solid var(--border-light);
+  border-radius: 100px;
+  background: transparent; color: var(--white-muted);
+  font-size: 0.8rem; font-weight: 500;
+  transition: all 0.15s; cursor: pointer;
+}
+
+.filter-chip:hover {
+  border-color: rgba(91,46,255,0.4);
+  color: var(--lavender);
+  background: rgba(91,46,255,0.08);
+}
+
+.filter-chip.active {
+  border-color: var(--purple);
+  color: var(--white);
+  background: rgba(91,46,255,0.2);
+}
+
+/* ── BUTTONS ── */
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  background: var(--purple); color: var(--white);
+  padding: 0.75rem 1.5rem; border: none; border-radius: 10px;
+  font-size: 0.9rem; font-weight: 600;
+  transition: all 0.2s; cursor: pointer;
+}
+
+.btn-primary:hover {
+  background: var(--purple-light);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(91,46,255,0.35);
+}
+
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  background: rgba(255,255,255,0.06); color: var(--white);
+  padding: 0.75rem 1.5rem;
+  border: 1px solid var(--border-light); border-radius: 10px;
+  font-size: 0.9rem; font-weight: 500;
+  transition: all 0.2s; cursor: pointer;
+}
+
+.btn-ghost:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.15);
+}
+
+/* ── SECTION LABELS ── */
+.section-label {
+  font-size: 0.7rem; font-weight: 700;
+  color: var(--teal);
+  text-transform: uppercase; letter-spacing: 0.15em;
+  margin-bottom: 0.75rem;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+
+.section-label::before {
+  content: '';
+  display: inline-block; width: 16px; height: 2px;
+  background: var(--teal);
+}
+
+.section-title {
+  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  font-weight: 800; color: var(--white);
+  letter-spacing: -0.04em; line-height: 1.1;
+}
+
+/* ── PILL TAG ── */
+.pill {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  background: rgba(91,46,255,0.12);
+  border: 1px solid rgba(91,46,255,0.25);
+  color: var(--lavender);
+  font-size: 0.72rem; font-weight: 600;
+  padding: 0.25rem 0.75rem; border-radius: 100px;
+  letter-spacing: 0.04em;
+}
+
+/* ── FEATURE TAG ── */
+.feature-tag {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border-light);
+  border-radius: 6px; padding: 0.3rem 0.65rem;
+  font-size: 0.75rem; color: var(--white-muted);
+}
+
+/* ── METRIC CARD ── */
+.metric-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 0.75rem; margin-bottom: 1rem;
+}
+
+.metric-card {
+  background: var(--navy-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px; padding: 1rem;
+}
+
+.metric-card-label {
+  font-size: 0.68rem; font-weight: 600;
+  color: var(--white-muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  margin-bottom: 0.4rem;
+}
+
+.metric-card-value {
+  font-size: 1.4rem; font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* ── FOOTER ── */
+footer {
+  background: var(--navy-mid);
+  border-top: 1px solid var(--border-light);
+  padding: 3rem 2rem;
+}
+
+.footer-inner {
+  max-width: 1200px; margin: 0 auto;
+  display: flex; justify-content: space-between;
+  align-items: center; flex-wrap: wrap; gap: 1rem;
+}
+
+.footer-brand-name {
+  font-size: 1.1rem; font-weight: 800;
+  color: var(--white); letter-spacing: -0.02em;
+}
+
+.footer-tagline {
+  font-size: 0.75rem; color: var(--white-dim);
+  margin-top: 0.25rem;
+}
+
+.footer-links {
+  display: flex; gap: 2rem;
+  font-size: 0.8rem; color: var(--white-muted);
+}
+
+.footer-links a:hover { color: var(--white); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .detail-body { grid-template-columns: 1fr; }
+  .metric-grid { grid-template-columns: 1fr 1fr; }
+  .hero { padding: 4rem 1.25rem 3rem; }
+  .detail-hero { padding: 2rem 1.25rem; }
+  .detail-body { padding: 1.5rem 1.25rem; }
+}
+</file>
+
+<file path="app/globals.d.ts">
+declare module '*.css' {
+  const content: string
+  export default content
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from 'next'
+import './globals.css'
+import NavBar from '../components/NavBar'
+
+export const metadata: Metadata = {
+  title: 'Zalone — Africa Property Intelligence',
+  description: 'Search any African neighborhood to see verified yield analysis, cap rates, and market benchmarks before you invest.',
+  openGraph: {
+    title: 'Zalone — Africa Property Intelligence',
+    description: 'Real property intelligence for African real estate investors. Powered by Manop.',
+  },
+}
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
+        <NavBar />
+        {children}
+      </body>
+    </html>
+  )
+}
+</file>
+
+<file path="app/page.tsx">
+'use client'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+
+const MARKETS = [
+  'Lekki Phase 1, Lagos',
+  'Ikoyi, Lagos',
+  'Victoria Island, Lagos',
+  'Lekki, Lagos',
+  'Ikota, Lagos',
+  'Chevron, Lagos',
+  'Ajah, Lagos',
+  'Gbagada, Lagos',
+  'Yaba, Lagos',
+  'Ikeja GRA, Lagos',
+]
+
+const STATS = [
+  { value: '6–24%', label: 'Rental Yield Range' },
+  { value: '₦45M–₦280M', label: 'Market Price Range' },
+  { value: '13', label: 'Neighborhoods Covered' },
+  { value: 'Live', label: 'Lagos Intelligence' },
+]
+
+const FEATURES = [
+  {
+    icon: '◈',
+    title: 'Traditional Yield',
+    desc: 'Annual rental return as % of property value. Computed from verified Lagos benchmarks.',
+  },
+  {
+    icon: '◉',
+    title: 'Short-let / Airbnb Yield',
+    desc: 'Nightly rate × occupancy × 365. Lagos short-let market modelled per neighborhood.',
+  },
+  {
+    icon: '⬡',
+    title: 'Cap Rate & NOI',
+    desc: 'Net operating income after expenses. What the property actually earns, not what it asks.',
+  },
+  {
+    icon: '◇',
+    title: 'Cash-on-Cash Return',
+    desc: 'Return on your equity after Nigerian mortgage costs. Honest about the 22% rate reality.',
+  },
+  {
+    icon: '△',
+    title: 'Price vs Market',
+    desc: 'How this property sits against neighborhood median. Overpriced, underpriced, or fair.',
+  },
+  {
+    icon: '○',
+    title: 'Strategy Signal',
+    desc: 'Data-driven recommendation: buy-to-let, short-let, hold, or review the deal.',
+  },
+]
+
+export default function Home() {
+  const [dark, setDark] = useState(true)
+  const [query, setQuery] = useState('')
+  const [focused, setFocused] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [typed, setTyped] = useState('')
+  const [placeholder, setPlaceholder] = useState('')
+  const router = useRouter()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Animated placeholder cycling
+  useEffect(() => {
+    const examples = ['Lekki Phase 1', 'Ikoyi', 'Victoria Island', 'Chevron', 'Ajah']
+    let i = 0, ci = 0, dir = 1
+    const interval = setInterval(() => {
+      const word = examples[i]
+      if (dir === 1) {
+        setPlaceholder('Search ' + word.slice(0, ci + 1) + '...')
+        ci++
+        if (ci >= word.length) { dir = -1; setTimeout(() => {}, 800) }
+      } else {
+        setPlaceholder('Search ' + word.slice(0, ci - 1) + '...')
+        ci--
+        if (ci <= 0) { dir = 1; i = (i + 1) % examples.length }
+      }
+    }, 80)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleInput = (val: string) => {
+    setQuery(val)
+    if (val.length > 1) {
+      setSuggestions(MARKETS.filter(m => m.toLowerCase().includes(val.toLowerCase())).slice(0, 5))
+    } else {
+      setSuggestions([])
+    }
+  }
+
+  const handleSearch = (val?: string) => {
+    const q = val || query
+    if (!q.trim()) return
+    const slug = q.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+    router.push(`/neighborhood/${slug}?q=${encodeURIComponent(q)}`)
+  }
+
+  // CSS variables for dark/light
+  const css = dark ? {
+    '--bg':         '#0F172A',
+    '--bg2':        '#1E293B',
+    '--bg3':        '#273549',
+    '--text':       '#F8FAFC',
+    '--text2':      'rgba(248,250,252,0.65)',
+    '--text3':      'rgba(248,250,252,0.35)',
+    '--purple':     '#5B2EFF',
+    '--purpleL':    '#7C5FFF',
+    '--teal':       '#14B8A6',
+    '--tealL':      '#2DD4BF',
+    '--border':     'rgba(91,46,255,0.18)',
+    '--borderL':    'rgba(248,250,252,0.07)',
+    '--card':       '#162032',
+  } as React.CSSProperties : {
+    '--bg':         '#F8FAFC',
+    '--bg2':        '#F1F5F9',
+    '--bg3':        '#E2E8F0',
+    '--text':       '#0F172A',
+    '--text2':      'rgba(15,23,42,0.65)',
+    '--text3':      'rgba(15,23,42,0.35)',
+    '--purple':     '#5B2EFF',
+    '--purpleL':    '#7C5FFF',
+    '--teal':       '#0D9488',
+    '--tealL':      '#14B8A6',
+    '--border':     'rgba(91,46,255,0.2)',
+    '--borderL':    'rgba(15,23,42,0.08)',
+    '--card':       '#FFFFFF',
+  } as React.CSSProperties
+
+  return (
+    <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', transition: 'all 0.3s' }}>
+
+
+
+      {/* ── HERO ── */}
+      <section style={{
+        position: 'relative', overflow: 'hidden',
+        padding: 'clamp(5rem, 12vw, 9rem) 2rem clamp(4rem, 8vw, 7rem)',
+      }}>
+        {/* Ambient glows */}
+        <div style={{
+          position: 'absolute', top: -200, left: '30%',
+          width: 600, height: 600, borderRadius: '50%',
+          background: dark
+            ? 'radial-gradient(circle, rgba(91,46,255,0.18) 0%, transparent 70%)'
+            : 'radial-gradient(circle, rgba(91,46,255,0.08) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+        <div style={{
+          position: 'absolute', bottom: -150, right: '10%',
+          width: 400, height: 400, borderRadius: '50%',
+          background: dark
+            ? 'radial-gradient(circle, rgba(20,184,166,0.12) 0%, transparent 70%)'
+            : 'radial-gradient(circle, rgba(20,184,166,0.06) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        <div style={{
+          maxWidth: 760, margin: '0 auto',
+          textAlign: 'center', position: 'relative', zIndex: 1,
+        }}>
+
+          {/* Status pill */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+            background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.08)',
+            border: '1px solid rgba(20,184,166,0.25)',
+            borderRadius: 100, padding: '0.3rem 0.875rem',
+            fontSize: '0.72rem', fontWeight: 600,
+            color: 'var(--teal)',
+            letterSpacing: '0.04em',
+            marginBottom: '2rem',
+          }}>
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: 'var(--teal)', display: 'inline-block',
+              animation: 'pulse 2s infinite',
+            }} />
+            Lagos · Phase 1 Active
+          </div>
+
+          {/* Headline */}
+          <h1 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'clamp(2.4rem, 6vw, 4.5rem)',
+            fontWeight: 800, lineHeight: 1.05,
+            letterSpacing: '-0.04em',
+            color: 'var(--text)',
+            marginBottom: '1.25rem',
+          }}>
+            Invest in African real estate{' '}
+            <span style={{
+              background: 'linear-gradient(135deg, #5B2EFF 0%, #14B8A6 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>
+              with real data.
+            </span>
+          </h1>
+
+          <p style={{
+            fontSize: 'clamp(1rem, 2vw, 1.15rem)',
+            color: 'var(--text2)',
+            lineHeight: 1.7, maxWidth: 540, margin: '0 auto 2.5rem',
+            fontWeight: 300,
+          }}>
+            Search any Lagos neighborhood to see verified yield analysis,
+            cap rates, and market benchmarks — before you invest a naira.
+          </p>
+
+          {/* ── SEARCH BAR ── */}
+          <div style={{
+            position: 'relative', maxWidth: 580, margin: '0 auto',
+          }}>
+            <div style={{
+              display: 'flex', gap: 0,
+              background: 'var(--card)',
+              border: `1.5px solid ${focused ? 'var(--purple)' : 'var(--borderL)'}`,
+              borderRadius: 14,
+              boxShadow: focused
+                ? '0 0 0 4px rgba(91,46,255,0.12), 0 8px 32px rgba(0,0,0,0.15)'
+                : '0 4px 24px rgba(0,0,0,0.08)',
+              overflow: 'hidden',
+              transition: 'border-color 0.2s, box-shadow 0.2s',
+            }}>
+              {/* Search icon */}
+              <div style={{
+                padding: '0 1rem 0 1.25rem',
+                display: 'flex', alignItems: 'center',
+                color: focused ? 'var(--purple)' : 'var(--text3)',
+                fontSize: '1.1rem', flexShrink: 0,
+                transition: 'color 0.2s',
+              }}>
+                ⌕
+              </div>
+
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={e => handleInput(e.target.value)}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setTimeout(() => { setFocused(false); setSuggestions([]) }, 150)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                placeholder={placeholder || 'Search a neighborhood, e.g. Lekki Phase 1...'}
+                style={{
+                  flex: 1, padding: '1rem 0.5rem',
+                  background: 'transparent', border: 'none', outline: 'none',
+                  fontSize: '0.95rem', color: 'var(--text)',
+                  fontFamily: 'var(--font-display)',
+                }}
+              />
+
+              <button
+                onClick={() => handleSearch()}
+                style={{
+                  background: 'var(--purple)',
+                  color: '#fff', border: 'none',
+                  padding: '0 1.5rem',
+                  fontSize: '0.875rem', fontWeight: 600,
+                  cursor: 'pointer',
+                  borderRadius: '0 12px 12px 0',
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                  fontFamily: 'var(--font-display)',
+                  transition: 'background 0.15s',
+                }}
+              >
+                Analyze →
+              </button>
+            </div>
+
+            {/* Suggestions dropdown */}
+            {suggestions.length > 0 && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 50,
+                background: 'var(--card)',
+                border: '1px solid var(--borderL)',
+                borderRadius: 12,
+                boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                overflow: 'hidden',
+              }}>
+                {suggestions.map(s => (
+                  <button
+                    key={s}
+                    onMouseDown={() => { setQuery(s); setSuggestions([]); handleSearch(s) }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.75rem',
+                      width: '100%', padding: '0.75rem 1.25rem',
+                      background: 'transparent', border: 'none',
+                      textAlign: 'left', cursor: 'pointer',
+                      color: 'var(--text)', fontSize: '0.875rem',
+                      borderBottom: '1px solid var(--borderL)',
+                      fontFamily: 'var(--font-display)',
+                      transition: 'background 0.1s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = dark ? 'rgba(91,46,255,0.08)' : '#F1F5F9')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span style={{ color: 'var(--teal)', fontSize: '0.8rem' }}>📍</span>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Quick market chips */}
+          <div style={{
+            display: 'flex', gap: '0.5rem', flexWrap: 'wrap',
+            justifyContent: 'center', marginTop: '1.25rem',
+          }}>
+            <span style={{
+              fontSize: '0.72rem', color: 'var(--text3)',
+              marginRight: '0.25rem', alignSelf: 'center',
+            }}>
+              Popular:
+            </span>
+            {['Lekki Phase 1', 'Ikoyi', 'Victoria Island', 'Chevron', 'Ajah'].map(area => (
+              <button
+                key={area}
+                onClick={() => { setQuery(area); handleSearch(area) }}
+                style={{
+                  padding: '0.3rem 0.75rem',
+                  background: dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)',
+                  border: '1px solid rgba(91,46,255,0.2)',
+                  borderRadius: 100, cursor: 'pointer',
+                  fontSize: '0.75rem', fontWeight: 500,
+                  color: 'var(--purpleL)',
+                  fontFamily: 'var(--font-display)',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(91,46,255,0.18)'; e.currentTarget.style.color = '#fff' }}
+                onMouseLeave={e => { e.currentTarget.style.background = dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)'; e.currentTarget.style.color = 'var(--purpleL)' }}
+              >
+                {area}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── STATS BAR ── */}
+      <div style={{
+        borderTop: '1px solid var(--borderL)',
+        borderBottom: '1px solid var(--borderL)',
+        background: dark ? 'rgba(30,41,59,0.5)' : 'var(--bg2)',
+      }}>
+        <div style={{
+          maxWidth: 900, margin: '0 auto',
+          padding: '1.75rem 2rem',
+          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: 0,
+        }}>
+          {STATS.map((s, i) => (
+            <div key={s.label} style={{
+              textAlign: 'center',
+              borderRight: i < 3 ? '1px solid var(--borderL)' : 'none',
+              padding: '0 1.5rem',
+            }}>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 'clamp(1.3rem, 2.5vw, 1.8rem)',
+                fontWeight: 800, color: 'var(--text)',
+                letterSpacing: '-0.03em', lineHeight: 1,
+                marginBottom: '0.35rem',
+              }}>
+                {s.value}
+              </div>
+              <div style={{
+                fontSize: '0.68rem', fontWeight: 600,
+                color: 'var(--text3)',
+                textTransform: 'uppercase', letterSpacing: '0.1em',
+              }}>
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── WHAT ZALONE COMPUTES ── */}
+      <section style={{ maxWidth: 1100, margin: '0 auto', padding: '5rem 2rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+            fontSize: '0.7rem', fontWeight: 700, color: 'var(--teal)',
+            textTransform: 'uppercase', letterSpacing: '0.15em',
+            marginBottom: '0.875rem',
+          }}>
+            <span style={{ width: 20, height: 2, background: 'var(--teal)', display: 'inline-block' }} />
+            What Zalone Computes
+            <span style={{ width: 20, height: 2, background: 'var(--teal)', display: 'inline-block' }} />
+          </div>
+          <h2 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'clamp(1.8rem, 3.5vw, 2.6rem)',
+            fontWeight: 800, color: 'var(--text)',
+            letterSpacing: '-0.04em', lineHeight: 1.1,
+            marginBottom: '0.75rem',
+          }}>
+            Not listings. Intelligence.
+          </h2>
+          <p style={{
+            fontSize: '1rem', color: 'var(--text2)',
+            maxWidth: 480, margin: '0 auto', lineHeight: 1.7, fontWeight: 300,
+          }}>
+            Every neighborhood search returns real financial metrics — computed
+            from verified Lagos market benchmarks, not estimated from thin air.
+          </p>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+          gap: '1rem',
+        }}>
+          {FEATURES.map(f => (
+            <div key={f.title} style={{
+              background: 'var(--card)',
+              border: '1px solid var(--borderL)',
+              borderRadius: 16, padding: '1.5rem',
+              transition: 'border-color 0.2s, transform 0.2s',
+              cursor: 'default',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = 'rgba(91,46,255,0.35)'
+              e.currentTarget.style.transform = 'translateY(-2px)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = 'var(--borderL)'
+              e.currentTarget.style.transform = 'translateY(0)'
+            }}
+            >
+              <div style={{
+                fontSize: '1.4rem', color: 'var(--teal)',
+                marginBottom: '0.75rem', lineHeight: 1,
+              }}>
+                {f.icon}
+              </div>
+              <div style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: '1rem', fontWeight: 700,
+                color: 'var(--text)', marginBottom: '0.4rem',
+                letterSpacing: '-0.01em',
+              }}>
+                {f.title}
+              </div>
+              <div style={{
+                fontSize: '0.85rem', color: 'var(--text2)',
+                lineHeight: 1.6, fontWeight: 300,
+              }}>
+                {f.desc}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── HOW IT WORKS ── */}
+      <section style={{
+        background: dark ? 'var(--bg2)' : 'var(--bg2)',
+        borderTop: '1px solid var(--borderL)',
+        borderBottom: '1px solid var(--borderL)',
+      }}>
+        <div style={{ maxWidth: 800, margin: '0 auto', padding: '5rem 2rem', textAlign: 'center' }}>
+          <div style={{
+            fontSize: '0.7rem', fontWeight: 700, color: 'var(--teal)',
+            textTransform: 'uppercase', letterSpacing: '0.15em',
+            marginBottom: '1rem',
+          }}>
+            How It Works
+          </div>
+          <h2 style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
+            fontWeight: 800, color: 'var(--text)',
+            letterSpacing: '-0.03em', marginBottom: '3rem',
+          }}>
+            Search a neighborhood. Get your report.
+          </h2>
+
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: '2rem',
+          }}>
+            {[
+              { step: '01', title: 'Search', desc: 'Enter any Lagos neighborhood — Lekki, Ikoyi, Chevron, anywhere we cover.' },
+              { step: '02', title: 'Analyze', desc: 'Zalone computes yield, cap rate, cash-on-cash, and market position instantly.' },
+              { step: '03', title: 'Decide', desc: 'See the strategy signal. Buy, hold, short-let, or walk away — with data behind you.' },
+            ].map(s => (
+              <div key={s.step} style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: '50%',
+                  background: 'rgba(91,46,255,0.12)',
+                  border: '1px solid rgba(91,46,255,0.25)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  margin: '0 auto 1rem',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.72rem', fontWeight: 700,
+                  color: 'var(--purpleL)',
+                  letterSpacing: '0.06em',
+                }}>
+                  {s.step}
+                </div>
+                <div style={{
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '1rem', fontWeight: 700,
+                  color: 'var(--text)', marginBottom: '0.5rem',
+                }}>
+                  {s.title}
+                </div>
+                <div style={{
+                  fontSize: '0.85rem', color: 'var(--text2)',
+                  lineHeight: 1.6, fontWeight: 300,
+                }}>
+                  {s.desc}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => inputRef.current?.focus()}
+            style={{
+              marginTop: '3rem',
+              background: 'var(--purple)', color: '#fff',
+              border: 'none', borderRadius: 10,
+              padding: '0.875rem 2rem',
+              fontFamily: 'var(--font-display)',
+              fontSize: '0.9rem', fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'background 0.15s, transform 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--purpleL)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--purple)'; e.currentTarget.style.transform = 'translateY(0)' }}
+          >
+            Start Analyzing →
+          </button>
+        </div>
+      </section>
+
+      {/* ── AGENCY PARTNER CTA ── */}
+      <section style={{ maxWidth: 960, margin: '0 auto', padding: '5rem 2rem' }}>
+        <div style={{
+          background: dark
+            ? 'linear-gradient(135deg, rgba(91,46,255,0.12) 0%, rgba(20,184,166,0.06) 100%)'
+            : 'linear-gradient(135deg, rgba(91,46,255,0.05) 0%, rgba(20,184,166,0.03) 100%)',
+          border: '1px solid rgba(91,46,255,0.2)',
+          borderRadius: 24, padding: 'clamp(2rem, 4vw, 3.5rem)',
+          position: 'relative', overflow: 'hidden',
+          display: 'flex', gap: '2rem',
+          justifyContent: 'space-between', alignItems: 'center',
+          flexWrap: 'wrap',
+        }}>
+          <div style={{
+            position: 'absolute', top: -80, right: -60,
+            width: 280, height: 280, borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(91,46,255,0.12) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
+          <div style={{ position: 'relative', zIndex: 1, maxWidth: 460 }}>
+            <div style={{
+              fontSize: '0.68rem', fontWeight: 700, color: 'var(--teal)',
+              textTransform: 'uppercase', letterSpacing: '0.14em',
+              marginBottom: '0.875rem',
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+            }}>
+              <span style={{ width: 14, height: 2, background: 'var(--teal)', display: 'inline-block' }} />
+              Founding Agency Partners
+            </div>
+            <h3 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 'clamp(1.4rem, 2.5vw, 1.9rem)',
+              fontWeight: 800, color: 'var(--text)',
+              letterSpacing: '-0.03em', lineHeight: 1.15,
+              marginBottom: '0.875rem',
+            }}>
+              Your listings get intelligence.<br />Free. Forever.
+            </h3>
+            <p style={{
+              fontSize: '0.9rem', color: 'var(--text2)',
+              lineHeight: 1.7, fontWeight: 300,
+            }}>
+              Founding agency partners receive free yield analysis and cap rate
+              reports on every listing they share. Investors see your properties
+              with verified intelligence. You get notified when they enquire.
+            </p>
+          </div>
+          <a
+            href="mailto:partners@manop.africa"
+            style={{
+              background: 'var(--purple)', color: '#fff',
+              padding: '0.875rem 1.75rem',
+              borderRadius: 12,
+              fontSize: '0.9rem', fontWeight: 600,
+              textDecoration: 'none',
+              whiteSpace: 'nowrap',
+              fontFamily: 'var(--font-display)',
+              position: 'relative', zIndex: 1,
+              transition: 'background 0.15s, transform 0.15s',
+              display: 'inline-block',
+            }}
+          >
+            Become a Founding Partner →
+          </a>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer style={{
+        background: dark ? 'var(--bg2)' : 'var(--bg2)',
+        borderTop: '1px solid var(--borderL)',
+        padding: '2.5rem 2rem',
+      }}>
+        <div style={{
+          maxWidth: 1100, margin: '0 auto',
+          display: 'flex', justifyContent: 'space-between',
+          alignItems: 'center', flexWrap: 'wrap', gap: '1rem',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: 'var(--purple)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.85rem', fontWeight: 800, color: '#fff',
+              fontFamily: 'var(--font-display)',
+            }}>Z</div>
+            <div>
+              <div style={{
+                fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)',
+                fontFamily: 'var(--font-display)',
+              }}>
+                Zalone
+              </div>
+              <div style={{ fontSize: '0.65rem', color: 'var(--text3)' }}>
+                Lagos · Nigeria · V1
+              </div>
+            </div>
+          </div>
+          <div style={{
+            display: 'flex', gap: '1.5rem',
+            fontSize: '0.8rem', color: 'var(--text2)',
+          }}>
+            <a href="/search" style={{ color: 'var(--text2)', textDecoration: 'none' }}>Properties</a>
+            <a href="#" style={{ color: 'var(--text2)', textDecoration: 'none' }}>Markets</a>
+            <a href="mailto:partners@manop.africa" style={{ color: 'var(--text2)', textDecoration: 'none' }}>
+              Agency Partners
+            </a>
+          </div>
+          <div style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.68rem', color: 'var(--text3)',
+            letterSpacing: '0.04em',
+          }}>
+            Powered by Manop Intelligence
+          </div>
+        </div>
+      </footer>
+
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(20,184,166,0.4); }
+          50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(20,184,166,0); }
+        }
+        @media (min-width: 640px) {
+          .nav-link { display: block !important; }
+        }
+        @media (max-width: 639px) {
+          .nav-link { display: none !important; }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        a { color: inherit; }
+        input::placeholder { color: rgba(148,163,184,0.6); }
+      `}</style>
+    </div>
+  )
+}
+</file>
+
+<file path="components/NavBar.tsx">
+'use client'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+
+// Global dark mode — stored in localStorage so it persists
+export default function NavBar() {
+  const [dark, setDark] = useState(true)
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const saved = localStorage.getItem('zalone-dark')
+    if (saved !== null) setDark(saved === 'true')
+
+    const onScroll = () => setScrolled(window.scrollY > 10)
+    window.addEventListener('scroll', onScroll)
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  const toggle = () => {
+    const next = !dark
+    setDark(next)
+    localStorage.setItem('zalone-dark', String(next))
+    // Broadcast to page so it can react
+    window.dispatchEvent(new CustomEvent('zalone-theme', { detail: next }))
+    // Also set on document for CSS var access
+    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light')
+  }
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  }, [dark])
+
+  const bg = dark
+    ? `rgba(15,23,42,${scrolled ? '0.96' : '0.88'})`
+    : `rgba(248,250,252,${scrolled ? '0.98' : '0.92'})`
+
+  return (
+    <nav style={{
+      position: 'sticky', top: 0, zIndex: 200,
+      background: bg,
+      backdropFilter: 'blur(20px)',
+      borderBottom: `1px solid ${dark ? 'rgba(248,250,252,0.07)' : 'rgba(15,23,42,0.08)'}`,
+      padding: '0 2rem',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      height: 64,
+      transition: 'background 0.3s',
+    }}>
+
+      {/* Brand */}
+      <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 9,
+          background: '#5B2EFF',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '1rem', fontWeight: 800, color: '#fff',
+          letterSpacing: '-0.02em',
+        }}>
+          Z
+        </div>
+        <div>
+          <div style={{
+            fontSize: '1rem', fontWeight: 700,
+            color: dark ? '#F8FAFC' : '#0F172A',
+            letterSpacing: '-0.02em',
+            lineHeight: 1.1,
+          }}>
+            Zalone
+          </div>
+          <div style={{
+            fontSize: '0.55rem', fontWeight: 600,
+            color: '#14B8A6', letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+          }}>
+            Africa Intelligence
+          </div>
+        </div>
+      </Link>
+
+      {/* Links + controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+        {/* Desktop nav links */}
+        <Link href="/search" style={{
+          fontSize: '0.82rem', fontWeight: 500,
+          color: dark ? 'rgba(248,250,252,0.65)' : 'rgba(15,23,42,0.65)',
+          padding: '0.4rem 0.875rem', borderRadius: 8,
+          textDecoration: 'none', transition: 'all 0.15s',
+        }}>
+          Properties
+        </Link>
+
+        {/* Dark/light toggle */}
+        <button
+          onClick={toggle}
+          aria-label="Toggle dark mode"
+          style={{
+            width: 42, height: 24,
+            borderRadius: 100,
+            background: dark ? '#5B2EFF' : '#CBD5E1',
+            border: 'none', cursor: 'pointer',
+            position: 'relative',
+            transition: 'background 0.25s',
+            marginLeft: '0.5rem', marginRight: '0.5rem',
+            flexShrink: 0,
+          }}
+        >
+          <div style={{
+            position: 'absolute',
+            top: 3, left: dark ? 21 : 3,
+            width: 18, height: 18,
+            borderRadius: '50%',
+            background: '#fff',
+            transition: 'left 0.25s',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '0.65rem',
+          }}>
+            {dark ? '☀' : '☾'}
+          </div>
+        </button>
+
+        {/* Agency CTA */}
+        <a
+          href="mailto:partners@manop.africa"
+          style={{
+            background: '#5B2EFF', color: '#fff',
+            padding: '0.42rem 1rem',
+            borderRadius: 8,
+            fontSize: '0.8rem', fontWeight: 600,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+            transition: 'background 0.15s',
+          }}
+        >
+          Agency Partner →
+        </a>
+      </div>
+    </nav>
+  )
+}
+</file>
+
+<file path="lib/intelligence.ts">
+// lib/intelligence.ts
+// Zalone Intelligence Engine client
+// Calls the Manop intelligence API (FastAPI backend)
+// Falls back to local computation when API unavailable
+
+const INTEL_API = process.env.NEXT_PUBLIC_INTEL_API_URL || 'http://localhost:8002'
+
+export interface PropertyInput {
+  price:          number
+  bedrooms?:      number
+  neighborhood?:  string
+  city?:          string
+  property_type?: string
+  size_sqm?:      number
+  annual_rent?:   number
+  listing_type?:  string
+}
+
+export interface IntelligenceReport {
+  property:           Record<string, unknown>
+  traditional_rental: { gross_pct: number; net_pct: number; annual_rent: number; annual_noi: number }
+  shortlet:           { gross_pct: number; net_pct: number; nightly_rate: number; occupancy_rate: number; net_annual: number }
+  cap_rate:           { cap_rate_pct: number; noi_annual: number }
+  cash_on_cash:       { coc_pct: number; annual_cashflow: number; monthly_mortgage: number; down_payment: number }
+  price_vs_market:    { median_price_area: number; pct_vs_median: number; price_position: string }
+  affordability:      { accessible_to: string; buyer_profile: string; required_monthly_income: number }
+  days_on_market:     { estimated_dom: number; dom_range: string; demand_level: string }
+  area_benchmark:     { area_tier: string; demand_level: string }
+  recommendation:     { strategy: string; strategy_label: string; reason: string }
+}
+
+export async function getIntelligenceReport(prop: PropertyInput): Promise<IntelligenceReport | null> {
+  try {
+    const res = await fetch(`${INTEL_API}/analyze`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(prop),
+      cache:   'no-store',
+    })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+// Format NGN amounts
+export function fmtNGN(amount: number): string {
+  if (amount >= 1_000_000_000) return `₦${(amount / 1_000_000_000).toFixed(1)}B`
+  if (amount >= 1_000_000)     return `₦${(amount / 1_000_000).toFixed(1)}M`
+  if (amount >= 1_000)         return `₦${(amount / 1_000).toFixed(0)}K`
+  return `₦${amount.toFixed(0)}`
+}
+
+export function yieldColor(pct: number): string {
+  if (pct >= 10) return '#22c55e'  // green
+  if (pct >= 7)  return '#84cc16'  // lime
+  if (pct >= 5)  return '#eab308'  // yellow
+  return '#f97316'                  // orange
+}
+
+export function positionLabel(pos: string): { label: string; color: string } {
+  const map: Record<string, { label: string; color: string }> = {
+    below_market:  { label: 'Below Market',   color: '#22c55e' },
+    at_market:     { label: 'At Market',      color: '#eab308' },
+    above_market:  { label: 'Above Market',   color: '#f97316' },
+    premium:       { label: 'Premium Priced', color: '#ef4444' },
+  }
+  return map[pos] || { label: pos, color: '#94a3b8' }
+}
+</file>
+
+<file path="lib/manop-cleaner.ts">
+// lib/manop-cleaner.ts
+// Manop Data Cleaning & Intelligence Engine
+// Runs entirely client-side — no backend needed for cleaning
+// Sends clean records to Supabase via API route
+
+// ─── Neighborhood Normalizer ──────────────────────────────────────────────
+
+const NEIGHBORHOOD_MAP: Record<string, { display: string; city: string; country: string }> = {
+  // Lekki corridor variants
+  'lekki phase 1': { display: 'Lekki Phase 1', city: 'Lagos', country: 'Nigeria' },
+  'lekki phase one': { display: 'Lekki Phase 1', city: 'Lagos', country: 'Nigeria' },
+  'lekki ph 1': { display: 'Lekki Phase 1', city: 'Lagos', country: 'Nigeria' },
+  'lekki ph1': { display: 'Lekki Phase 1', city: 'Lagos', country: 'Nigeria' },
+  'lekki phase1': { display: 'Lekki Phase 1', city: 'Lagos', country: 'Nigeria' },
+  'lekki phase 2': { display: 'Lekki Phase 2', city: 'Lagos', country: 'Nigeria' },
+  'lekki phase two': { display: 'Lekki Phase 2', city: 'Lagos', country: 'Nigeria' },
+  'lekki': { display: 'Lekki', city: 'Lagos', country: 'Nigeria' },
+  'ikota': { display: 'Ikota', city: 'Lagos', country: 'Nigeria' },
+  'ikota villa': { display: 'Ikota Villa', city: 'Lagos', country: 'Nigeria' },
+  'chevron': { display: 'Chevron', city: 'Lagos', country: 'Nigeria' },
+  'chevron drive': { display: 'Chevron', city: 'Lagos', country: 'Nigeria' },
+  'ajah': { display: 'Ajah', city: 'Lagos', country: 'Nigeria' },
+  'sangotedo': { display: 'Sangotedo', city: 'Lagos', country: 'Nigeria' },
+  'agungi': { display: 'Agungi', city: 'Lagos', country: 'Nigeria' },
+  'osapa': { display: 'Osapa London', city: 'Lagos', country: 'Nigeria' },
+  'osapa london': { display: 'Osapa London', city: 'Lagos', country: 'Nigeria' },
+  'orchid': { display: 'Orchid Road', city: 'Lagos', country: 'Nigeria' },
+  'orchid road': { display: 'Orchid Road', city: 'Lagos', country: 'Nigeria' },
+  'badore': { display: 'Badore', city: 'Lagos', country: 'Nigeria' },
+  'thomas estate': { display: 'Thomas Estate', city: 'Lagos', country: 'Nigeria' },
+  'ikoyi': { display: 'Ikoyi', city: 'Lagos', country: 'Nigeria' },
+  'banana island': { display: 'Banana Island', city: 'Lagos', country: 'Nigeria' },
+  'victoria island': { display: 'Victoria Island', city: 'Lagos', country: 'Nigeria' },
+  'vi': { display: 'Victoria Island', city: 'Lagos', country: 'Nigeria' },
+  'v.i': { display: 'Victoria Island', city: 'Lagos', country: 'Nigeria' },
+  'v.i.': { display: 'Victoria Island', city: 'Lagos', country: 'Nigeria' },
+  'eko atlantic': { display: 'Eko Atlantic', city: 'Lagos', country: 'Nigeria' },
+  'gbagada': { display: 'Gbagada', city: 'Lagos', country: 'Nigeria' },
+  'maryland': { display: 'Maryland', city: 'Lagos', country: 'Nigeria' },
+  'yaba': { display: 'Yaba', city: 'Lagos', country: 'Nigeria' },
+  'ikeja': { display: 'Ikeja', city: 'Lagos', country: 'Nigeria' },
+  'ikeja gra': { display: 'Ikeja GRA', city: 'Lagos', country: 'Nigeria' },
+  'gra ikeja': { display: 'Ikeja GRA', city: 'Lagos', country: 'Nigeria' },
+  'surulere': { display: 'Surulere', city: 'Lagos', country: 'Nigeria' },
+  'magodo': { display: 'Magodo', city: 'Lagos', country: 'Nigeria' },
+  'ojodu': { display: 'Ojodu', city: 'Lagos', country: 'Nigeria' },
+  'festac': { display: 'Festac', city: 'Lagos', country: 'Nigeria' },
+  'ikorodu': { display: 'Ikorodu', city: 'Lagos', country: 'Nigeria' },
+  // Abuja
+  'maitama': { display: 'Maitama', city: 'Abuja', country: 'Nigeria' },
+  'asokoro': { display: 'Asokoro', city: 'Abuja', country: 'Nigeria' },
+  'wuse 2': { display: 'Wuse 2', city: 'Abuja', country: 'Nigeria' },
+  'wuse': { display: 'Wuse', city: 'Abuja', country: 'Nigeria' },
+  'gwarinpa': { display: 'Gwarinpa', city: 'Abuja', country: 'Nigeria' },
+  'jabi': { display: 'Jabi', city: 'Abuja', country: 'Nigeria' },
+  'katampe': { display: 'Katampe', city: 'Abuja', country: 'Nigeria' },
+  // Ghana
+  'east legon': { display: 'East Legon', city: 'Accra', country: 'Ghana' },
+  'airport residential': { display: 'Airport Residential', city: 'Accra', country: 'Ghana' },
+  'cantonments': { display: 'Cantonments', city: 'Accra', country: 'Ghana' },
+  'labone': { display: 'Labone', city: 'Accra', country: 'Ghana' },
+  'spintex': { display: 'Spintex', city: 'Accra', country: 'Ghana' },
+  'tema': { display: 'Tema', city: 'Accra', country: 'Ghana' },
+  // Kenya
+  'westlands': { display: 'Westlands', city: 'Nairobi', country: 'Kenya' },
+  'karen': { display: 'Karen', city: 'Nairobi', country: 'Kenya' },
+  'kilimani': { display: 'Kilimani', city: 'Nairobi', country: 'Kenya' },
+  'lavington': { display: 'Lavington', city: 'Nairobi', country: 'Kenya' },
+  'parklands': { display: 'Parklands', city: 'Nairobi', country: 'Kenya' },
+  'muthaiga': { display: 'Muthaiga', city: 'Nairobi', country: 'Kenya' },
+}
+
+// ─── Property Type Normalizer ─────────────────────────────────────────────
+
+const PROPERTY_TYPES: Record<string, string> = {
+  'detached duplex': 'Detached Duplex',
+  'semi detached duplex': 'Semi-Detached Duplex',
+  'semi-detached duplex': 'Semi-Detached Duplex',
+  'terraced duplex': 'Terraced Duplex',
+  'detached bungalow': 'Detached Bungalow',
+  'semi detached bungalow': 'Semi-Detached Bungalow',
+  'duplex': 'Duplex',
+  'bungalow': 'Bungalow',
+  'flat': 'Flat / Apartment',
+  'apartment': 'Flat / Apartment',
+  'studio': 'Studio Apartment',
+  'penthouse': 'Penthouse',
+  'mansion': 'Mansion',
+  'terraced': 'Terraced House',
+  'detached': 'Detached House',
+  'land': 'Land',
+  'commercial': 'Commercial',
+  'office': 'Office Space',
+  'shop': 'Shop / Retail',
+  'warehouse': 'Warehouse',
+}
+
+// ─── Title Document Normalizer ────────────────────────────────────────────
+
+const TITLE_TYPES: Record<string, string> = {
+  'c of o': 'C of O',
+  'cofo': 'C of O',
+  'c.o.f.o': 'C of O',
+  'certificate of occupancy': 'C of O',
+  "governor's consent": "Governor's Consent",
+  'governors consent': "Governor's Consent",
+  'gov consent': "Governor's Consent",
+  'deed of assignment': 'Deed of Assignment',
+  'deed': 'Deed of Assignment',
+  'gazette': 'Gazette',
+  'gazetted': 'Gazette',
+  'registered': 'Registered Title',
+  'freehold': 'Freehold',
+  'leasehold': 'Leasehold',
+  'survey': 'Survey Plan',
+  'excision': 'Excision',
+  'r of o': 'Right of Occupancy',
+  'right of occupancy': 'Right of Occupancy',
+}
+
+// ─── Price Parser ─────────────────────────────────────────────────────────
+
+function parsePrice(raw: string | number | null | undefined): {
+  value: number | null
+  currency: string
+} {
+  if (raw === null || raw === undefined || raw === '') return { value: null, currency: 'NGN' }
+  if (typeof raw === 'number') return { value: raw, currency: 'NGN' }
+
+  const s = String(raw).trim().toLowerCase().replace(/,/g, '')
+
+  // Detect currency
+  let currency = 'NGN'
+  if (s.includes('$') || s.includes('usd')) currency = 'USD'
+  else if (s.includes('ghs') || s.includes('gh₵') || s.includes('ghc')) currency = 'GHS'
+  else if (s.includes('kes') || s.includes('ksh')) currency = 'KES'
+  else if (s.includes('zar') || s.includes('rand')) currency = 'ZAR'
+
+  // Extract number
+  const match = s.match(/([\d.]+)\s*(b|billion|m|million|k|thousand)?/)
+  if (!match) return { value: null, currency }
+
+  let num = parseFloat(match[1])
+  const suffix = match[2] || ''
+
+  if (suffix.startsWith('b')) num *= 1_000_000_000
+  else if (suffix.startsWith('m')) num *= 1_000_000
+  else if (suffix.startsWith('k') || suffix.startsWith('th')) num *= 1_000
+
+  return { value: isNaN(num) ? null : Math.round(num), currency }
+}
+
+// ─── Neighborhood Resolver ────────────────────────────────────────────────
+
+function resolveNeighborhood(raw: string | null | undefined): {
+  neighborhood: string | null
+  city: string | null
+  country: string | null
+  confidence: 'exact' | 'fuzzy' | 'unknown'
+} {
+  if (!raw) return { neighborhood: null, city: null, country: null, confidence: 'unknown' }
+
+  const s = raw.trim().toLowerCase()
+
+  // Exact match
+  if (NEIGHBORHOOD_MAP[s]) {
+    const m = NEIGHBORHOOD_MAP[s]
+    return { neighborhood: m.display, city: m.city, country: m.country, confidence: 'exact' }
+  }
+
+  // Try partial match — find the longest matching key contained in the string
+  let bestKey = ''
+  let bestMatch: typeof NEIGHBORHOOD_MAP[string] | null = null
+  for (const [key, val] of Object.entries(NEIGHBORHOOD_MAP)) {
+    if (s.includes(key) && key.length > bestKey.length) {
+      bestKey = key
+      bestMatch = val
+    }
+  }
+
+  if (bestMatch) {
+    return {
+      neighborhood: bestMatch.display,
+      city: bestMatch.city,
+      country: bestMatch.country,
+      confidence: 'fuzzy',
+    }
+  }
+
+  // Can't resolve — keep original but flag
+  return {
+    neighborhood: raw.trim(),
+    city: null,
+    country: null,
+    confidence: 'unknown',
+  }
+}
+
+// ─── Property Type Resolver ───────────────────────────────────────────────
+
+function resolvePropertyType(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const s = raw.trim().toLowerCase()
+  for (const [key, val] of Object.entries(PROPERTY_TYPES)) {
+    if (s.includes(key)) return val
+  }
+  return raw.trim()
+}
+
+// ─── Title Resolver ───────────────────────────────────────────────────────
+
+function resolveTitle(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const s = raw.trim().toLowerCase()
+  for (const [key, val] of Object.entries(TITLE_TYPES)) {
+    if (s.includes(key)) return val
+  }
+  return raw.trim()
+}
+
+// ─── Bedroom/Bathroom Parser ──────────────────────────────────────────────
+
+function parseBedrooms(raw: string | number | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null
+  if (typeof raw === 'number') return raw > 0 && raw <= 20 ? raw : null
+  const s = String(raw)
+  const match = s.match(/(\d+)/)
+  if (!match) return null
+  const n = parseInt(match[1])
+  return n > 0 && n <= 20 ? n : null
+}
+
+// ─── Listing Type Resolver ────────────────────────────────────────────────
+
+function resolveListingType(raw: string | null | undefined): string {
+  if (!raw) return 'for-sale'
+  const s = raw.toLowerCase()
+  if (s.includes('short') || s.includes('airbnb') || s.includes('vacation')) return 'short-let'
+  if (s.includes('rent') || s.includes('let') || s.includes('lease')) return 'for-rent'
+  if (s.includes('off') && s.includes('plan')) return 'off-plan'
+  return 'for-sale'
+}
+
+// ─── Price Plausibility Check ─────────────────────────────────────────────
+
+interface PriceRange {
+  min: number
+  max: number
+}
+
+const PLAUSIBLE_RANGES: Record<string, Record<number, PriceRange>> = {
+  'Lekki Phase 1': {
+    1: { min: 25_000_000, max: 80_000_000 },
+    2: { min: 45_000_000, max: 120_000_000 },
+    3: { min: 70_000_000, max: 200_000_000 },
+    4: { min: 100_000_000, max: 300_000_000 },
+    5: { min: 150_000_000, max: 500_000_000 },
+  },
+  'Ikoyi': {
+    2: { min: 100_000_000, max: 350_000_000 },
+    3: { min: 150_000_000, max: 500_000_000 },
+    4: { min: 200_000_000, max: 800_000_000 },
+    5: { min: 300_000_000, max: 2_000_000_000 },
+  },
+  'Victoria Island': {
+    2: { min: 80_000_000, max: 280_000_000 },
+    3: { min: 120_000_000, max: 400_000_000 },
+    4: { min: 180_000_000, max: 600_000_000 },
+  },
+  'Lekki': {
+    1: { min: 15_000_000, max: 60_000_000 },
+    2: { min: 30_000_000, max: 100_000_000 },
+    3: { min: 50_000_000, max: 150_000_000 },
+    4: { min: 80_000_000, max: 220_000_000 },
+    5: { min: 100_000_000, max: 350_000_000 },
+  },
+  'Ajah': {
+    2: { min: 20_000_000, max: 70_000_000 },
+    3: { min: 35_000_000, max: 100_000_000 },
+    4: { min: 60_000_000, max: 150_000_000 },
+  },
+}
+
+function checkPricePlausibility(
+  price: number,
+  neighborhood: string | null,
+  bedrooms: number | null,
+): { flag: boolean; reason: string } {
+  if (!neighborhood || !bedrooms) return { flag: false, reason: '' }
+
+  const ranges = PLAUSIBLE_RANGES[neighborhood]
+  if (!ranges) return { flag: false, reason: '' }
+
+  const range = ranges[bedrooms] || ranges[3]
+  if (!range) return { flag: false, reason: '' }
+
+  if (price < range.min) {
+    return {
+      flag: true,
+      reason: `Price ₦${(price / 1_000_000).toFixed(1)}M is significantly below expected range for ${bedrooms}-bed in ${neighborhood} (min ₦${(range.min / 1_000_000).toFixed(0)}M). Verify or this may be rental not sale price.`,
+    }
+  }
+  if (price > range.max) {
+    return {
+      flag: true,
+      reason: `Price ₦${(price / 1_000_000).toFixed(1)}M is significantly above expected range for ${bedrooms}-bed in ${neighborhood} (max ₦${(range.max / 1_000_000).toFixed(0)}M). Verify or possible data error.`,
+    }
+  }
+
+  return { flag: false, reason: '' }
+}
+
+// ─── Deduplication Key ────────────────────────────────────────────────────
+
+function makeDedupKey(record: CleanRecord): string {
+  const parts = [
+    record.neighborhood?.toLowerCase() || '',
+    String(record.bedrooms || ''),
+    record.property_type?.toLowerCase() || '',
+    String(Math.round((record.price || 0) / 5_000_000) * 5_000_000), // round to nearest 5M
+  ]
+  return parts.join('|')
+}
+
+// ─── Main Types ───────────────────────────────────────────────────────────
+
+export interface RawRow {
+  [key: string]: string | number | null | undefined
+}
+
+export interface CleanRecord {
+  // Core fields
+  neighborhood:        string | null
+  city:                string | null
+  country:             string | null
+  property_type:       string | null
+  bedrooms:            number | null
+  bathrooms:           number | null
+  price:               number | null
+  currency:            string
+  listing_type:        string
+  title_document:      string | null
+  size_sqm:            number | null
+  description:         string | null
+  source_agency:       string | null
+  source_url:          string | null
+
+  // Computed
+  location_confidence: 'exact' | 'fuzzy' | 'unknown'
+  price_flagged:       boolean
+  price_flag_reason:   string
+  dedup_key:           string
+
+  // Raw preservation
+  raw:                 RawRow
+}
+
+export interface ProcessingResult {
+  clean:      CleanRecord[]
+  flagged:    CleanRecord[]
+  duplicates: { kept: CleanRecord; duplicate: CleanRecord }[]
+  summary: {
+    total:      number
+    clean:      number
+    flagged:    number
+    duplicates: number
+    neighborhoods: Record<string, number>
+    price_range: { min: number; max: number } | null
+    median_price: number | null
+  }
+}
+
+// ─── Column Name Guesser ──────────────────────────────────────────────────
+// Handles messy column names from any agency spreadsheet
+
+function guessColumn(row: RawRow, candidates: string[]): string | number | null | undefined {
+  const keys = Object.keys(row)
+  for (const candidate of candidates) {
+    const found = keys.find(k => k.toLowerCase().replace(/[\s_-]/g, '').includes(candidate.toLowerCase().replace(/[\s_-]/g, '')))
+    if (found !== undefined) return row[found]
+  }
+  return null
+}
+
+// ─── Main Cleaner Function ────────────────────────────────────────────────
+
+export function processRawData(
+  rows: RawRow[],
+  options: {
+    source_agency?: string
+    default_listing_type?: string
+    default_country?: string
+    default_city?: string
+  } = {}
+): ProcessingResult {
+  const cleaned: CleanRecord[] = []
+  const dedupMap = new Map<string, CleanRecord>()
+  const duplicates: ProcessingResult['duplicates'] = []
+
+  for (const row of rows) {
+    // Skip completely empty rows
+    const values = Object.values(row).filter(v => v !== null && v !== undefined && String(v).trim() !== '')
+    if (values.length === 0) continue
+
+    // Extract fields using flexible column name matching
+    const rawPrice       = guessColumn(row, ['price', 'amount', 'cost', 'value', 'asking'])
+    const rawLocation    = guessColumn(row, ['location', 'neighborhood', 'area', 'address', 'neighbourhood', 'estate'])
+    const rawBeds        = guessColumn(row, ['bedroom', 'bed', 'rooms', 'br'])
+    const rawBaths       = guessColumn(row, ['bathroom', 'bath', 'toilet'])
+    const rawType        = guessColumn(row, ['type', 'property type', 'propertytype', 'category', 'kind'])
+    const rawTitle       = guessColumn(row, ['title', 'document', 'deed', 'cofo', 'legal'])
+    const rawListing     = guessColumn(row, ['listing', 'purpose', 'sale', 'rent', 'status', 'for'])
+    const rawSize        = guessColumn(row, ['size', 'sqm', 'area sqm', 'floor area', 'plot size', 'land size'])
+    const rawDesc        = guessColumn(row, ['description', 'details', 'features', 'notes', 'remarks'])
+    const rawUrl         = guessColumn(row, ['url', 'link', 'source', 'listing url', 'property url'])
+
+    // Parse price
+    const { value: price, currency } = parsePrice(rawPrice)
+
+    // Resolve location
+    const locationStr = String(rawLocation || options.default_city || '').trim()
+    const { neighborhood, city, country, confidence } = resolveNeighborhood(locationStr)
+
+    // Resolve property type
+    const property_type = resolvePropertyType(String(rawType || ''))
+
+    // Parse bedrooms/bathrooms
+    const bedrooms  = parseBedrooms(rawBeds)
+    const bathrooms = parseBedrooms(rawBaths)
+
+    // Title document
+    const title_document = resolveTitle(String(rawTitle || ''))
+
+    // Listing type
+    const listing_type = resolveListingType(String(rawListing || options.default_listing_type || ''))
+
+    // Size
+    const sizeRaw = rawSize ? parseFloat(String(rawSize).replace(/[^0-9.]/g, '')) : null
+    const size_sqm = sizeRaw && !isNaN(sizeRaw) && sizeRaw > 0 && sizeRaw < 100_000 ? sizeRaw : null
+
+    // Price plausibility
+    const { flag: price_flagged, reason: price_flag_reason } = checkPricePlausibility(
+      price || 0,
+      neighborhood,
+      bedrooms,
+    )
+
+    const record: CleanRecord = {
+      neighborhood:        neighborhood || (options.default_city ? locationStr : null),
+      city:                city || options.default_city || null,
+      country:             country || options.default_country || null,
+      property_type,
+      bedrooms,
+      bathrooms,
+      price,
+      currency,
+      listing_type,
+      title_document,
+      size_sqm,
+      description:         rawDesc ? String(rawDesc).slice(0, 2000) : null,
+      source_agency:       options.source_agency || null,
+      source_url:          rawUrl ? String(rawUrl) : null,
+      location_confidence: confidence,
+      price_flagged,
+      price_flag_reason,
+      dedup_key:           '',
+      raw:                 row,
+    }
+
+    record.dedup_key = makeDedupKey(record)
+
+    // Deduplication check
+    if (dedupMap.has(record.dedup_key)) {
+      duplicates.push({ kept: dedupMap.get(record.dedup_key)!, duplicate: record })
+    } else {
+      dedupMap.set(record.dedup_key, record)
+      cleaned.push(record)
+    }
+  }
+
+  // Separate flagged from clean
+  const clean   = cleaned.filter(r => !r.price_flagged && r.location_confidence !== 'unknown')
+  const flagged = cleaned.filter(r => r.price_flagged  || r.location_confidence === 'unknown')
+
+  // Summary stats
+  const prices = clean.map(r => r.price).filter((p): p is number => p !== null).sort((a, b) => a - b)
+  const neighborhoods: Record<string, number> = {}
+  for (const r of clean) {
+    const n = r.neighborhood || 'Unknown'
+    neighborhoods[n] = (neighborhoods[n] || 0) + 1
+  }
+
+  const median_price = prices.length
+    ? prices[Math.floor(prices.length / 2)]
+    : null
+
+  return {
+    clean,
+    flagged,
+    duplicates,
+    summary: {
+      total:      rows.length,
+      clean:      clean.length,
+      flagged:    flagged.length,
+      duplicates: duplicates.length,
+      neighborhoods,
+      price_range: prices.length ? { min: prices[0], max: prices[prices.length - 1] } : null,
+      median_price,
+    },
+  }
+}
+
+// ─── CSV Parser ───────────────────────────────────────────────────────────
+
+export function parseCSV(text: string): RawRow[] {
+  const lines = text.split('\n').filter(l => l.trim())
+  if (lines.length < 2) return []
+
+  // Detect delimiter
+  const firstLine = lines[0]
+  const delimiter = firstLine.includes('\t') ? '\t' : ','
+
+  const headers = firstLine.split(delimiter).map(h => h.trim().replace(/^"|"$/g, '').trim())
+
+  return lines.slice(1).map(line => {
+    const values = line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, '').trim())
+    const row: RawRow = {}
+    headers.forEach((h, i) => {
+      row[h] = values[i] || null
+    })
+    return row
+  })
+}
+
+// ─── Format helpers ───────────────────────────────────────────────────────
+
+export function fmtClean(n: number | null, currency = 'NGN'): string {
+  if (!n) return '—'
+  const sym = currency === 'USD' ? '$' : currency === 'GHS' ? 'GH₵' : currency === 'KES' ? 'KSh' : '₦'
+  if (n >= 1_000_000_000) return `${sym}${(n / 1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000)     return `${sym}${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)         return `${sym}${(n / 1_000).toFixed(0)}K`
+  return `${sym}${n}`
+}
+</file>
+
+<file path="lib/supabase.ts">
+// lib/supabase.ts — Zalone reads from same Manop DB
+import { createClient } from '@supabase/supabase-js'
+
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+export const supabase = createClient(url, key)
+
+export type ZaloneProperty = {
+  id:                  string
+  property_type:       string | null
+  bedrooms:            number | null
+  bathrooms:           number | null
+  city:                string | null
+  neighborhood:        string | null
+  country_code:        string | null
+  price_local:         number | null
+  currency_code:       string | null
+  listing_type:        string | null
+  title_document_type: string | null
+  agent_phone:         string | null
+  source_type:         string | null
+  size_sqm:            number | null
+  created_at:          string | null
+  raw_data:            Record<string, unknown> | null
+}
+
+export async function getProperties(opts: {
+  city?: string
+  neighborhood?: string
+  type?: string
+  minPrice?: number
+  maxPrice?: number
+  bedrooms?: number
+  limit?: number
+} = {}): Promise<ZaloneProperty[]> {
+  let q = supabase
+    .from('properties')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(opts.limit || 24)
+
+  if (opts.city && opts.city !== 'all')
+    q = q.ilike('city', `%${opts.city}%`)
+  if (opts.neighborhood)
+    q = q.ilike('neighborhood', `%${opts.neighborhood}%`)
+  if (opts.type)
+    q = q.eq('property_type', opts.type)
+  if (opts.bedrooms)
+    q = q.eq('bedrooms', opts.bedrooms)
+  if (opts.minPrice)
+    q = q.gte('price_local', opts.minPrice)
+  if (opts.maxPrice)
+    q = q.lte('price_local', opts.maxPrice)
+
+  const { data, error } = await q
+  if (error) { console.error(error); return [] }
+  return (data as ZaloneProperty[]) || []
+}
+
+export async function getProperty(id: string): Promise<ZaloneProperty | null> {
+  const { data, error } = await supabase
+    .from('properties')
+    .select('*')
+    .eq('id', id)
+    .single()
+  if (error) return null
+  return data as ZaloneProperty
+}
+
+export async function getStats() {
+  const { count: total }  = await supabase
+    .from('properties').select('*', { count: 'exact', head: true })
+  const { data: cities }  = await supabase
+    .from('properties').select('city')
+  const unique = new Set((cities || []).map((r: any) => r.city).filter(Boolean)).size
+  return { total: total || 0, cities: unique }
+}
+</file>
+
+<file path=".gitignore">
+node_modules/
+.next/
+.env.local
+.env
+*.log
+.DS_Store
+.vercel
+</file>
+
+<file path="next-env.d.ts">
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/basic-features/typescript for more information.
+</file>
+
+<file path="next.config.js">
+/** @type {import('next').NextConfig} */
+const nextConfig = {}
+module.exports = nextConfig
+</file>
+
+<file path="package.json">
+{
+  "name": "zalone",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "next": "14.2.0",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.27",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5"
+  }
+}
+</file>
+
+<file path="postcss.config.js">
+module.exports = { plugins: { tailwindcss: {}, autoprefixer: {} } }
+</file>
+
+<file path="tailwind.config.js">
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
+  theme: { extend: {} },
+  plugins: [],
+}
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noEmit": true,
+    "incremental": true,
+    "module": "esnext",
+    "esModuleInterop": true,
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "target": "es2015",
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./*"] }
+  },
+  "include": ["next-env.d.ts", ".next/types/**/*.ts", "**/*.ts", "**/*.tsx", "**/*.css"],
+  "exclude": ["node_modules"]
+}
+</file>
+
+</files>
