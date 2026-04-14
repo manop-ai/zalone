@@ -44,12 +44,15 @@ app/
   admin/
     upload/
       page.tsx
+  agency-dashboard/
+    page.tsx
   api/
     ingest/
       route.ts
   neighborhood/
     [slug]/
       page.tsx
+      PropertySection.tsx
   property/
     [id]/
       page.tsx
@@ -65,11 +68,13 @@ lib/
   intelligence.ts
   manop-cleaner.ts
   supabase.ts
+  theme.ts
 .gitignore
 next-env.d.ts
 next.config.js
 package.json
 postcss.config.js
+seed_lekki_phase1.py
 tailwind.config.js
 tsconfig.json
 </directory_structure>
@@ -606,6 +611,405 @@ export default function UploadPage() {
 }
 </file>
 
+<file path="app/agency-dashboard/page.tsx">
+'use client'
+import { useState, useEffect } from 'react'
+import { getInitialDark, listenTheme } from '../../lib/theme'
+
+// ─── Mock data for demo — replace with real Supabase queries ─────────────
+const MOCK_AGENCY = {
+  name: 'Vala Homes',
+  city: 'Lagos',
+  tier: 'Founding Partner',
+  joined: 'April 2026',
+  listings_total: 30,
+  listings_live: 28,
+  listings_pending: 2,
+  total_views: 847,
+  investor_enquiries: 12,
+  avg_confidence: 91,
+}
+
+const MOCK_LISTINGS = [
+  { id: '1', title: '5-Bed Detached Duplex', neighborhood: 'Lekki Phase 1', price: 120_000_000, type: 'for-sale', views: 143, enquiries: 3, title_doc: "Governor's Consent", confidence: 94, trad_yield: 6.2, shortlet_yield: 24.1, status: 'live' },
+  { id: '2', title: '3-Bed Flat', neighborhood: 'Lekki Phase 1', price: 65_000_000, type: 'for-sale', views: 87, enquiries: 1, title_doc: 'C of O', confidence: 96, trad_yield: 7.4, shortlet_yield: 19.3, status: 'live' },
+  { id: '3', title: '4-Bed Terrace Duplex', neighborhood: 'Lekki Phase 1', price: 95_000_000, type: 'for-sale', views: 211, enquiries: 4, title_doc: 'C of O', confidence: 93, trad_yield: 5.9, shortlet_yield: 22.8, status: 'live' },
+  { id: '4', title: '2-Bed Apartment', neighborhood: 'Lekki Phase 1', price: 45_000_000, type: 'for-rent', views: 76, enquiries: 2, title_doc: 'Deed of Assignment', confidence: 88, trad_yield: 8.1, shortlet_yield: 21.4, status: 'live' },
+  { id: '5', title: '6-Bed Mansion', neighborhood: 'Lekki Phase 1', price: 280_000_000, type: 'for-sale', views: 198, enquiries: 2, title_doc: "Governor's Consent", confidence: 97, trad_yield: 4.8, shortlet_yield: 28.6, status: 'live' },
+  { id: '6', title: '3-Bed Bungalow', neighborhood: 'Lekki Phase 1', price: 70_000_000, type: 'for-sale', views: 0, enquiries: 0, title_doc: 'C of O', confidence: 90, trad_yield: 6.8, shortlet_yield: 18.9, status: 'pending' },
+]
+
+const MOCK_ENQUIRIES = [
+  { id: 'e1', investor: 'Diaspora Investor (UK)', property: '4-Bed Terrace Duplex', time: '2 hours ago', type: 'Yield Analysis', status: 'new' },
+  { id: 'e2', investor: 'HNW Individual (Lagos)', property: '6-Bed Mansion', time: '5 hours ago', type: 'Property Visit', status: 'new' },
+  { id: 'e3', investor: 'Fund Manager (US)', property: '5-Bed Detached Duplex', time: 'Yesterday', type: 'Full Report', status: 'viewed' },
+  { id: 'e4', investor: 'Private Investor (Dubai)', property: '3-Bed Flat', time: '2 days ago', type: 'Yield Analysis', status: 'viewed' },
+]
+
+function fmtN(n: number) {
+  if (n >= 1_000_000_000) return `₦${(n/1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000)     return `₦${(n/1_000_000).toFixed(0)}M`
+  return `₦${(n/1_000).toFixed(0)}K`
+}
+
+export default function AgencyDashboard() {
+  const [dark, setDark] = useState(true)
+  const [tab,  setTab]  = useState<'overview'|'listings'|'enquiries'|'upload'>('overview')
+
+  useEffect(() => {
+    setDark(getInitialDark())
+    return listenTheme(d => setDark(d))
+  }, [])
+
+  const v = (d: string, l: string) => dark ? d : l
+  const bg     = v('#0F172A','#F8FAFC')
+  const bg2    = v('#1E293B','#F1F5F9')
+  const bg3    = v('#162032','#FFFFFF')
+  const text   = v('#F8FAFC','#0F172A')
+  const text2  = v('rgba(248,250,252,0.65)','rgba(15,23,42,0.65)')
+  const text3  = v('rgba(248,250,252,0.35)','rgba(15,23,42,0.35)')
+  const border = v('rgba(248,250,252,0.07)','rgba(15,23,42,0.08)')
+
+  const card = { background: bg3, border: `1px solid ${border}`, borderRadius: 16, padding: '1.5rem' }
+  const lbl  = { fontSize: '0.65rem', fontWeight: 700 as const, color: '#14B8A6', textTransform: 'uppercase' as const, letterSpacing: '0.12em', marginBottom: '0.35rem', display: 'block' as const }
+
+  return (
+    <div style={{ background: bg, minHeight: '100vh', color: text, fontFamily: 'system-ui, sans-serif', transition: 'all 0.3s' }}>
+
+      {/* ── SIDEBAR ── */}
+      <div style={{ display: 'flex', minHeight: '100vh' }}>
+        <aside style={{
+          width: 240, flexShrink: 0,
+          background: bg2,
+          borderRight: `1px solid ${border}`,
+          display: 'flex', flexDirection: 'column',
+          position: 'sticky', top: 0, height: '100vh',
+          overflow: 'auto',
+        }}>
+          {/* Logo */}
+          <div style={{ padding: '1.5rem', borderBottom: `1px solid ${border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none', marginBottom: '1.25rem' }}>
+              <div style={{ width: 30, height: 30, borderRadius: 8, background: '#5B2EFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', fontWeight: 800, color: '#fff' }}>Z</div>
+              <div>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: text }}>Zalone</div>
+                <div style={{ fontSize: '0.52rem', fontWeight: 600, color: '#14B8A6', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Agency Portal</div>
+              </div>
+            </div>
+
+            {/* Agency badge */}
+            <div style={{ background: dark ? 'rgba(91,46,255,0.12)' : 'rgba(91,46,255,0.06)', border: '1px solid rgba(91,46,255,0.2)', borderRadius: 10, padding: '0.75rem' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: text, marginBottom: '0.2rem' }}>{MOCK_AGENCY.name}</div>
+              <div style={{ fontSize: '0.65rem', color: '#14B8A6', fontWeight: 600 }}>✦ {MOCK_AGENCY.tier}</div>
+              <div style={{ fontSize: '0.65rem', color: text3, marginTop: '0.2rem' }}>{MOCK_AGENCY.city} · Since {MOCK_AGENCY.joined}</div>
+            </div>
+          </div>
+
+          {/* Nav */}
+          <nav style={{ padding: '1rem 0.75rem', flex: 1 }}>
+            {[
+              { id: 'overview',   label: 'Overview',    icon: '◈' },
+              { id: 'listings',   label: 'My Listings', icon: '◉' },
+              { id: 'enquiries',  label: 'Enquiries',   icon: '△', badge: MOCK_ENQUIRIES.filter(e=>e.status==='new').length },
+              { id: 'upload',     label: 'Upload Data', icon: '⊕' },
+            ].map(item => (
+              <button key={item.id} onClick={() => setTab(item.id as typeof tab)} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                width: '100%', padding: '0.65rem 0.875rem',
+                background: tab === item.id ? 'rgba(91,46,255,0.15)' : 'transparent',
+                border: `1px solid ${tab === item.id ? 'rgba(91,46,255,0.3)' : 'transparent'}`,
+                borderRadius: 10, cursor: 'pointer',
+                color: tab === item.id ? '#7C5FFF' : text2,
+                fontSize: '0.85rem', fontWeight: tab === item.id ? 600 : 400,
+                marginBottom: '0.25rem', transition: 'all 0.15s', textAlign: 'left',
+              }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <span style={{ fontSize: '0.9rem', color: tab === item.id ? '#5B2EFF' : '#14B8A6' }}>{item.icon}</span>
+                  {item.label}
+                </span>
+                {item.badge ? <span style={{ background: '#5B2EFF', color: '#fff', borderRadius: 100, padding: '0.1rem 0.45rem', fontSize: '0.65rem', fontWeight: 700 }}>{item.badge}</span> : null}
+              </button>
+            ))}
+          </nav>
+
+          {/* Data quality score */}
+          <div style={{ padding: '1rem 0.75rem', borderTop: `1px solid ${border}` }}>
+            <div style={lbl}>Data Quality</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ flex: 1, height: 6, background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', borderRadius: 100, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${MOCK_AGENCY.avg_confidence}%`, background: 'linear-gradient(90deg, #5B2EFF, #14B8A6)', borderRadius: 100 }} />
+              </div>
+              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: text }}>{MOCK_AGENCY.avg_confidence}%</span>
+            </div>
+            <div style={{ fontSize: '0.65rem', color: text3, marginTop: '0.35rem' }}>Avg confidence across listings</div>
+          </div>
+        </aside>
+
+        {/* ── MAIN ── */}
+        <main style={{ flex: 1, overflow: 'auto' }}>
+
+          {/* ── OVERVIEW TAB ── */}
+          {tab === 'overview' && (
+            <div style={{ padding: '2rem' }}>
+              <div style={{ marginBottom: '2rem' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.35rem' }}>Agency Dashboard</div>
+                <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: text, letterSpacing: '-0.03em' }}>
+                  Good morning, {MOCK_AGENCY.name} 👋
+                </h1>
+                <p style={{ color: text2, fontSize: '0.875rem', marginTop: '0.35rem' }}>
+                  Here's how your listings are performing on Zalone.
+                </p>
+              </div>
+
+              {/* Stats grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
+                {[
+                  { label: 'Live Listings',      value: MOCK_AGENCY.listings_live,    color: '#14B8A6' },
+                  { label: 'Total Views',         value: MOCK_AGENCY.total_views.toLocaleString(), color: '#7C5FFF' },
+                  { label: 'Investor Enquiries',  value: MOCK_AGENCY.investor_enquiries, color: '#22C55E' },
+                  { label: 'Avg Confidence',      value: `${MOCK_AGENCY.avg_confidence}%`, color: '#F59E0B' },
+                ].map(s => (
+                  <div key={s.label} style={card}>
+                    <span style={lbl}>{s.label}</span>
+                    <div style={{ fontSize: '2rem', fontWeight: 800, color: s.color, letterSpacing: '-0.04em', lineHeight: 1 }}>{s.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Recent enquiries */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                <div style={card}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>Recent Enquiries</div>
+                  {MOCK_ENQUIRIES.slice(0,3).map(e => (
+                    <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.75rem 0', borderBottom: `1px solid ${border}` }}>
+                      <div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: text, marginBottom: '0.15rem' }}>{e.investor}</div>
+                        <div style={{ fontSize: '0.72rem', color: text2 }}>{e.property}</div>
+                        <div style={{ fontSize: '0.68rem', color: text3 }}>{e.type} · {e.time}</div>
+                      </div>
+                      {e.status === 'new' && (
+                        <span style={{ background: 'rgba(91,46,255,0.15)', border: '1px solid rgba(91,46,255,0.3)', color: '#7C5FFF', borderRadius: 100, padding: '0.15rem 0.55rem', fontSize: '0.62rem', fontWeight: 700, whiteSpace: 'nowrap' }}>NEW</span>
+                      )}
+                    </div>
+                  ))}
+                  <button onClick={() => setTab('enquiries')} style={{ width: '100%', marginTop: '1rem', padding: '0.6rem', background: 'transparent', border: `1px solid ${border}`, borderRadius: 8, color: text2, fontSize: '0.78rem', cursor: 'pointer' }}>
+                    View all enquiries →
+                  </button>
+                </div>
+
+                {/* Intelligence preview */}
+                <div style={card}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
+                    ◈ Intelligence Preview
+                  </div>
+                  <div style={{ background: dark ? 'rgba(91,46,255,0.08)' : 'rgba(91,46,255,0.04)', border: '1px solid rgba(91,46,255,0.15)', borderRadius: 12, padding: '1rem', marginBottom: '0.75rem' }}>
+                    <div style={{ fontSize: '0.7rem', color: text3, marginBottom: '0.25rem' }}>Your best performer</div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 700, color: text, marginBottom: '0.5rem' }}>5-Bed Detached Duplex, Lekki Phase 1</div>
+                    <div style={{ display: 'flex', gap: '1.5rem' }}>
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: text3, marginBottom: '0.15rem' }}>Short-let Yield</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#22C55E' }}>24.1%</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: text3, marginBottom: '0.15rem' }}>Traditional Yield</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: '#14B8A6' }}>6.2%</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.65rem', color: text3, marginBottom: '0.15rem' }}>Views</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 800, color: text }}>143</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: text2, lineHeight: 1.6 }}>
+                    Zalone computes yield, cap rate, and market positioning for every listing you upload. Investors see this intelligence alongside your property.
+                  </div>
+                </div>
+              </div>
+
+              {/* What intelligence means for agencies */}
+              <div style={{ ...card, marginTop: '1.5rem', background: dark ? 'linear-gradient(135deg, rgba(91,46,255,0.1) 0%, rgba(20,184,166,0.06) 100%)' : 'linear-gradient(135deg, rgba(91,46,255,0.04) 0%, rgba(20,184,166,0.02) 100%)', borderColor: 'rgba(91,46,255,0.2)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem' }}>
+                  {[
+                    { icon: '◈', title: 'Verified Intelligence', desc: 'Every listing gets yield analysis, cap rate, and investment signals — attracting serious investors, not browsers.' },
+                    { icon: '△', title: 'Source Attribution', desc: 'Your agency name appears on every property. When investors click, they see your brand. Direct lead flow to you.' },
+                    { icon: '○', title: 'Data Quality Score', desc: 'Zalone scores your data quality transparently. Better data = higher visibility = more investor attention.' },
+                  ].map(f => (
+                    <div key={f.title}>
+                      <div style={{ fontSize: '1.2rem', color: '#14B8A6', marginBottom: '0.5rem' }}>{f.icon}</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: text, marginBottom: '0.4rem' }}>{f.title}</div>
+                      <div style={{ fontSize: '0.8rem', color: text2, lineHeight: 1.6, fontWeight: 300 }}>{f.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── LISTINGS TAB ── */}
+          {tab === 'listings' && (
+            <div style={{ padding: '2rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.25rem' }}>Listings</div>
+                  <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: text, letterSpacing: '-0.03em' }}>My Properties</h1>
+                </div>
+                <button onClick={() => setTab('upload')} style={{ background: '#5B2EFF', color: '#fff', border: 'none', borderRadius: 10, padding: '0.65rem 1.25rem', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
+                  + Upload New Listings
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {MOCK_LISTINGS.map(l => (
+                  <div key={l.id} style={{
+                    ...card, padding: '1.25rem',
+                    display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap',
+                    opacity: l.status === 'pending' ? 0.7 : 1,
+                  }}>
+                    {/* Status indicator */}
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: l.status === 'live' ? '#22C55E' : '#F59E0B', flexShrink: 0 }} />
+
+                    {/* Property info */}
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', color: text, marginBottom: '0.2rem' }}>{l.title}</div>
+                      <div style={{ fontSize: '0.78rem', color: text2 }}>
+                        📍 {l.neighborhood} · {fmtN(l.price)} · {l.type.replace(/-/g, ' ')} · 📄 {l.title_doc}
+                      </div>
+                    </div>
+
+                    {/* Intelligence */}
+                    <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.62rem', color: text3, marginBottom: '0.15rem' }}>Trad. Yield</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 700, color: l.trad_yield >= 7 ? '#22C55E' : '#14B8A6' }}>{l.trad_yield}%</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.62rem', color: text3, marginBottom: '0.15rem' }}>STR Yield</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 700, color: '#22C55E' }}>{l.shortlet_yield}%</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.62rem', color: text3, marginBottom: '0.15rem' }}>Views</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 700, color: text }}>{l.views}</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.62rem', color: text3, marginBottom: '0.15rem' }}>Enquiries</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 700, color: l.enquiries > 0 ? '#7C5FFF' : text3 }}>{l.enquiries}</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ fontSize: '0.62rem', color: text3, marginBottom: '0.15rem' }}>Quality</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 700, color: l.confidence >= 90 ? '#22C55E' : '#F59E0B' }}>{l.confidence}%</div>
+                      </div>
+                    </div>
+
+                    {/* Status badge */}
+                    <span style={{
+                      background: l.status === 'live' ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)',
+                      border: `1px solid ${l.status === 'live' ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                      color: l.status === 'live' ? '#22C55E' : '#F59E0B',
+                      borderRadius: 100, padding: '0.2rem 0.65rem',
+                      fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase' as const,
+                      letterSpacing: '0.06em', whiteSpace: 'nowrap' as const,
+                    }}>
+                      {l.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── ENQUIRIES TAB ── */}
+          {tab === 'enquiries' && (
+            <div style={{ padding: '2rem' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.25rem' }}>Investor Interest</div>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: text, letterSpacing: '-0.03em' }}>Enquiries</h1>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {MOCK_ENQUIRIES.map(e => (
+                  <div key={e.id} style={{ ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(91,46,255,0.15)', border: '1px solid rgba(91,46,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', flexShrink: 0 }}>
+                        👤
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: text, marginBottom: '0.15rem' }}>{e.investor}</div>
+                        <div style={{ fontSize: '0.78rem', color: text2 }}>{e.property}</div>
+                        <div style={{ fontSize: '0.68rem', color: text3 }}>{e.type} · {e.time}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                      {e.status === 'new' && <span style={{ background: 'rgba(91,46,255,0.15)', border: '1px solid rgba(91,46,255,0.3)', color: '#7C5FFF', borderRadius: 100, padding: '0.15rem 0.55rem', fontSize: '0.62rem', fontWeight: 700 }}>NEW</span>}
+                      <a href={`mailto:partners@manop.africa?subject=Enquiry: ${e.property}`} style={{ background: '#5B2EFF', color: '#fff', padding: '0.45rem 1rem', borderRadius: 8, fontSize: '0.78rem', fontWeight: 600, textDecoration: 'none' }}>
+                        Respond →
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── UPLOAD TAB ── */}
+          {tab === 'upload' && (
+            <div style={{ padding: '2rem', maxWidth: 700 }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.25rem' }}>Data Upload</div>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: text, letterSpacing: '-0.03em' }}>Upload Your Listings</h1>
+                <p style={{ color: text2, fontSize: '0.875rem', marginTop: '0.4rem', lineHeight: 1.6 }}>
+                  Upload any spreadsheet export. Manop cleans, structures, and adds intelligence automatically. Your data — attributed to {MOCK_AGENCY.name} on every property.
+                </p>
+              </div>
+
+              {/* Drop zone */}
+              <a href="/admin/upload" style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                border: `2px dashed ${border}`, borderRadius: 16, padding: '3rem 2rem',
+                textDecoration: 'none', color: text, marginBottom: '1.5rem',
+                transition: 'border-color 0.2s',
+                cursor: 'pointer',
+              }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(91,46,255,0.4)')}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = border)}
+              >
+                <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📂</div>
+                <div style={{ fontWeight: 700, fontSize: '1rem', marginBottom: '0.5rem' }}>Drop CSV or Excel file</div>
+                <div style={{ color: text2, fontSize: '0.82rem', marginBottom: '1.25rem' }}>or click to open the upload tool</div>
+                <div style={{ background: '#5B2EFF', color: '#fff', padding: '0.6rem 1.5rem', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600 }}>
+                  Open Upload Tool →
+                </div>
+              </a>
+
+              {/* What happens */}
+              <div style={card}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1rem' }}>What Manop Does With Your Data</div>
+                {[
+                  { step: '01', title: 'Clean & Structure', desc: 'Messy column names, mixed formats, Pidgin descriptions — handled automatically.' },
+                  { step: '02', title: 'Validate & Flag', desc: 'Price outliers flagged. Duplicate listings detected. Location names standardized.' },
+                  { step: '03', title: 'Add Intelligence', desc: 'Yield analysis, cap rate, market position — computed for every listing.' },
+                  { step: '04', title: 'Publish with Credit', desc: 'Your listings go live on Zalone with "{MOCK_AGENCY.name}" as the verified source.' },
+                ].map(s => (
+                  <div key={s.step} style={{ display: 'flex', gap: '1rem', padding: '0.75rem 0', borderBottom: `1px solid ${border}` }}>
+                    <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'rgba(91,46,255,0.12)', border: '1px solid rgba(91,46,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.65rem', fontWeight: 700, color: '#7C5FFF', flexShrink: 0 }}>
+                      {s.step}
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.85rem', color: text, marginBottom: '0.15rem' }}>{s.title}</div>
+                      <div style={{ fontSize: '0.78rem', color: text2 }}>{s.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+
+      <style>{`* { box-sizing: border-box; margin: 0; padding: 0; } a { color: inherit; }`}</style>
+    </div>
+  )
+}
+</file>
+
 <file path="app/api/ingest/route.ts">
 // app/api/ingest/route.ts
 // Receives cleaned records from the upload tool and saves to Supabase
@@ -677,805 +1081,256 @@ export async function POST(req: NextRequest) {
 }
 </file>
 
-<file path="app/neighborhood/[slug]/page.tsx">
+<file path="app/neighborhood/[slug]/PropertySection.tsx">
 'use client'
+// PropertySection.tsx
+// Shows real properties from Supabase under neighborhood intelligence
+// With freemium gates on advanced metrics
 
 import { useState, useEffect } from 'react'
-import { useParams, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 
-// ─── Lagos Neighborhood Intelligence Data ──────────────────────────────────
-// Seeded from manual market research — Manop grows this over time
-
-const NEIGHBORHOOD_DATA: Record<string, {
-  display:          string
-  city:             string
-  tier:             string
-  demand:           string
-  description:      string
-  median_sale_3bed: number
-  median_rent_3bed: number
-  nightly_3bed:     number
-  occupancy_pct:    number
-  price_per_sqm:    number
-  dom_avg:          number
-  yoy_change_pct:   number
-  supply_score:     number  // 1-10 (10 = many listings)
-  demand_score:     number  // 1-10
-  title_types:      string[]
-  key_facts:        string[]
-  best_for:         string[]
-  risks:            string[]
-}> = {
-  'lekki-phase-1': {
-    display:          'Lekki Phase 1',
-    city:             'Lagos',
-    tier:             'Premium',
-    demand:           'High',
-    description:      'Lagos\'s most sought-after residential corridor. Dense with embassies, corporate tenants, and diaspora buyers. Short-let demand is consistently strong year-round.',
-    median_sale_3bed: 120_000_000,
-    median_rent_3bed: 6_000_000,
-    nightly_3bed:     95_000,
-    occupancy_pct:    60,
-    price_per_sqm:    200_000,
-    dom_avg:          75,
-    yoy_change_pct:   8.2,
-    supply_score:     7,
-    demand_score:     9,
-    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
-    key_facts:        [
-      'Highest short-let demand in Lagos outside Ikoyi/VI',
-      'Corporate relocation hub — embassy staff, oil sector',
-      'Strong capital appreciation over 5 years',
-      'Serviced apartment market very active',
-    ],
-    best_for:         ['Short-let / Airbnb', 'Corporate rental', 'Capital appreciation'],
-    risks:            ['Traffic congestion affects desirability', 'Oversupply risk in some streets', 'Variable title quality — verify thoroughly'],
-  },
-  'ikoyi': {
-    display:          'Ikoyi',
-    city:             'Lagos',
-    tier:             'Prime',
-    demand:           'Very High',
-    description:      'Lagos\'s most prestigious address. Ultra-high-net-worth enclave with limited supply and consistent demand from multinationals, senior executives, and foreign residents.',
-    median_sale_3bed: 280_000_000,
-    median_rent_3bed: 14_000_000,
-    nightly_3bed:     180_000,
-    occupancy_pct:    65,
-    price_per_sqm:    350_000,
-    dom_avg:          60,
-    yoy_change_pct:   11.4,
-    supply_score:     4,
-    demand_score:     10,
-    title_types:      ['C of O', 'Governor\'s Consent'],
-    key_facts:        [
-      'Highest price per sqm in Nigeria',
-      'Sub-markets: Old Ikoyi, Banana Island, Parkview Estate',
-      'Institutional and family office buyer base',
-      'Luxury short-let rates highest in West Africa',
-    ],
-    best_for:         ['Luxury short-let', 'Buy & hold', 'Institutional investment'],
-    risks:            ['Requires significant capital', 'Title fraud risk is real — use verified lawyers', 'Limited entry points'],
-  },
-  'victoria-island': {
-    display:          'Victoria Island',
-    city:             'Lagos',
-    tier:             'Prime',
-    demand:           'Very High',
-    description:      'Lagos\'s commercial and diplomatic hub. Mixed-use — offices, hotels, embassies, high-end residential. Business travel drives strong short-let demand.',
-    median_sale_3bed: 220_000_000,
-    median_rent_3bed: 12_000_000,
-    nightly_3bed:     150_000,
-    occupancy_pct:    62,
-    price_per_sqm:    280_000,
-    dom_avg:          55,
-    yoy_change_pct:   9.8,
-    supply_score:     5,
-    demand_score:     10,
-    title_types:      ['C of O', 'Governor\'s Consent', 'Leasehold'],
-    key_facts:        [
-      'Business district — highest corporate rental demand',
-      'Embassy row drives consistent expat rental demand',
-      'Proximity to Eko Atlantic — appreciation catalyst',
-      'Hotel-grade short-let occupancy year-round',
-    ],
-    best_for:         ['Corporate rental', 'Short-let', 'Mixed-use investment'],
-    risks:            ['Traffic among worst in Lagos', 'Some leasehold complications', 'Noise and commercial activity'],
-  },
-  'lekki': {
-    display:          'Lekki',
-    city:             'Lagos',
-    tier:             'Premium',
-    demand:           'High',
-    description:      'Broad Lekki corridor encompassing Phase 2, Ikota, Chevron, and surrounding areas. Growing middle-to-upper class residential market with improving infrastructure.',
-    median_sale_3bed: 95_000_000,
-    median_rent_3bed: 4_800_000,
-    nightly_3bed:     85_000,
-    occupancy_pct:    58,
-    price_per_sqm:    160_000,
-    dom_avg:          80,
-    yoy_change_pct:   7.1,
-    supply_score:     8,
-    demand_score:     8,
-    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment', 'Gazette'],
-    key_facts:        [
-      'Broadest buyer pool in Lagos — accessible to professionals',
-      'New developments continuously entering market',
-      'Lekki-Epe Expressway infrastructure driving values',
-      'Strong off-plan investment activity',
-    ],
-    best_for:         ['Buy-to-let', 'First investment property', 'Off-plan play'],
-    risks:            ['Flooding risk in some areas — verify drainage', 'Traffic on Lekki-Epe expressway', 'Over-supply risk in some sub-areas'],
-  },
-  'ikota': {
-    display:          'Ikota',
-    city:             'Lagos',
-    tier:             'Premium',
-    demand:           'High',
-    description:      'Dense, established community within the Lekki corridor. Known for Ikota Shopping Complex area. Good balance of value and accessibility.',
-    median_sale_3bed: 90_000_000,
-    median_rent_3bed: 4_500_000,
-    nightly_3bed:     80_000,
-    occupancy_pct:    55,
-    price_per_sqm:    150_000,
-    dom_avg:          85,
-    yoy_change_pct:   6.4,
-    supply_score:     7,
-    demand_score:     7,
-    title_types:      ['Governor\'s Consent', 'Deed of Assignment', 'C of O'],
-    key_facts:        [
-      'Established community — lower vacancy than newer areas',
-      'Good schools and amenities nearby',
-      'Mix of property sizes and price points',
-      'Accessible to VI and Lekki Phase 1 via expressway',
-    ],
-    best_for:         ['Buy-to-let', 'Family rental market', 'Mid-range investment'],
-    risks:            ['Some older stock needs refurbishment', 'Traffic at peak hours', 'Mixed title quality'],
-  },
-  'chevron': {
-    display:          'Chevron',
-    city:             'Lagos',
-    tier:             'Premium',
-    demand:           'High',
-    description:      'Oil and gas sector hub area. Strong corporate and expat rental demand driven by proximity to Chevron Nigeria HQ and other energy companies.',
-    median_sale_3bed: 85_000_000,
-    median_rent_3bed: 4_200_000,
-    nightly_3bed:     75_000,
-    occupancy_pct:    55,
-    price_per_sqm:    140_000,
-    dom_avg:          85,
-    yoy_change_pct:   5.8,
-    supply_score:     6,
-    demand_score:     8,
-    title_types:      ['C of O', 'Governor\'s Consent'],
-    key_facts:        [
-      'Oil sector employment base provides stable rental demand',
-      'Serviced apartment demand from expat workforce',
-      'Good estate development quality',
-      'Close to Lekki Free Trade Zone — future catalyst',
-    ],
-    best_for:         ['Corporate rental', 'Expat accommodation', 'Serviced apartments'],
-    risks:            ['Oil sector volatility affects demand', 'Limited short-let appeal vs Lekki/Ikoyi', 'Some flooding history'],
-  },
-  'ajah': {
-    display:          'Ajah',
-    city:             'Lagos',
-    tier:             'Mid',
-    demand:           'Medium',
-    description:      'Rapidly developing corridor east of Lekki. Increasingly popular with mid-income professionals seeking more space at lower price points than central Lekki.',
-    median_sale_3bed: 65_000_000,
-    median_rent_3bed: 3_200_000,
-    nightly_3bed:     60_000,
-    occupancy_pct:    50,
-    price_per_sqm:    110_000,
-    dom_avg:          100,
-    yoy_change_pct:   9.3,
-    supply_score:     8,
-    demand_score:     7,
-    title_types:      ['Deed of Assignment', 'Governor\'s Consent', 'Gazette', 'C of O'],
-    key_facts:        [
-      'Fastest price appreciation corridor in Lagos 2023-2025',
-      'Attracts buyers priced out of Lekki',
-      'Large land parcels still available for development',
-      'Sangotedo and Abraham Adesanya estate sub-markets growing fast',
-    ],
-    best_for:         ['Capital appreciation play', 'Development land', 'Affordable buy-to-let'],
-    risks:            ['Infrastructure still developing', 'Title fraud risk higher than established areas', 'Traffic and road quality'],
-  },
-  'gbagada': {
-    display:          'Gbagada',
-    city:             'Lagos',
-    tier:             'Mid',
-    demand:           'Medium',
-    description:      'Well-established mainland Lagos community. Popular with middle-class professionals. Stable rental market with lower volatility than Island properties.',
-    median_sale_3bed: 70_000_000,
-    median_rent_3bed: 3_500_000,
-    nightly_3bed:     65_000,
-    occupancy_pct:    50,
-    price_per_sqm:    120_000,
-    dom_avg:          95,
-    yoy_change_pct:   4.2,
-    supply_score:     6,
-    demand_score:     7,
-    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
-    key_facts:        [
-      'Stable middle-class rental base',
-      'Good infrastructure vs mainland alternatives',
-      'Access to Third Mainland Bridge and Lagos Island',
-      'Phase 1 and Phase 2 have distinct price points',
-    ],
-    best_for:         ['Stable buy-to-let', 'Middle-income rental', 'Lower-risk entry'],
-    risks:            ['Lower capital appreciation than Island', 'Flooding in some areas', 'Island vs mainland preference among HNW buyers'],
-  },
-  'yaba': {
-    display:          'Yaba',
-    city:             'Lagos',
-    tier:             'Mid',
-    demand:           'Medium',
-    description:      'Lagos\'s tech and academic hub. Growing startup ecosystem, university presence, and young professional demographic creating new short-let demand.',
-    median_sale_3bed: 60_000_000,
-    median_rent_3bed: 3_000_000,
-    nightly_3bed:     55_000,
-    occupancy_pct:    50,
-    price_per_sqm:    100_000,
-    dom_avg:          100,
-    yoy_change_pct:   6.8,
-    supply_score:     6,
-    demand_score:     6,
-    title_types:      ['C of O', 'Deed of Assignment'],
-    key_facts:        [
-      'Tech hub — co-living and serviced apartment demand growing',
-      'University of Lagos proximity drives student rental market',
-      'Startup and SME office conversions increasing',
-      'Gentrification underway — early appreciation signals',
-    ],
-    best_for:         ['Co-living / serviced apartments', 'Student accommodation', 'Long-term appreciation'],
-    risks:            ['Older building stock in many areas', 'Mixed neighborhood quality', 'Infrastructure gaps'],
-  },
-  'ikeja': {
-    display:          'Ikeja',
-    city:             'Lagos',
-    tier:             'Mid',
-    demand:           'Medium',
-    description:      'Lagos State capital and commercial centre. Government, aviation, and business hub. Stable rental market with consistent corporate demand.',
-    median_sale_3bed: 75_000_000,
-    median_rent_3bed: 3_800_000,
-    nightly_3bed:     70_000,
-    occupancy_pct:    52,
-    price_per_sqm:    130_000,
-    dom_avg:          90,
-    yoy_change_pct:   5.1,
-    supply_score:     7,
-    demand_score:     7,
-    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
-    key_facts:        [
-      'Airport proximity drives short-let and corporate demand',
-      'GRA sub-market significantly higher quality',
-      'Government and civil service stable rental base',
-      'Alausa government area proximity',
-    ],
-    best_for:         ['Corporate rental', 'Airport proximity short-let', 'Government tenant base'],
-    risks:            ['Wide quality variation across sub-areas', 'GRA vs non-GRA price gap significant', 'Some infrastructure aging'],
-  },
+interface Property {
+  id: string
+  property_type: string | null
+  bedrooms: number | null
+  bathrooms: number | null
+  price_local: number | null
+  currency_code: string | null
+  listing_type: string | null
+  title_document_type: string | null
+  size_sqm: number | null
+  source_type: string | null
+  created_at: string | null
+  raw_data: Record<string, unknown> | null
 }
 
-// ─── Computation Engine (inline — works without API) ──────────────────────
+function fmtN(n: number | null, c?: string | null) {
+  if (!n) return 'POA'
+  const sym = c === 'USD' ? '$' : c === 'GHS' ? 'GH₵' : '₦'
+  if (n >= 1_000_000_000) return `${sym}${(n/1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000)     return `${sym}${(n/1_000_000).toFixed(0)}M`
+  return `${sym}${(n/1_000).toFixed(0)}K`
+}
 
-const MORTGAGE_RATE = 0.22
-const MORTGAGE_YEARS = 15
-const DOWN_PCT = 0.30
-const OPEX = 0.25
-const PLATFORM_FEE = 0.20
-const SHORTLET_OPEX = 0.35
-const MEDIAN_INCOME = 180_000
-
-function computeMetrics(nd: typeof NEIGHBORHOOD_DATA[string], bedrooms: number, price: number) {
-  // Scale benchmarks to bedrooms
-  const bedroomScale = bedrooms <= 1 ? 0.45 : bedrooms === 2 ? 0.72 : bedrooms === 3 ? 1.0 : bedrooms === 4 ? 1.35 : 1.65
-  const annualRent   = nd.median_rent_3bed * bedroomScale
-  const nightly      = nd.nightly_3bed * bedroomScale
-  const occupancy    = nd.occupancy_pct / 100
-
-  // Traditional yield
-  const tradGross = (annualRent / price) * 100
-  const tradNet   = ((annualRent * (1 - OPEX)) / price) * 100
-  const noi       = annualRent * (1 - OPEX)
-
-  // Short-let yield
-  const slGrossAnnual = nightly * occupancy * 365
-  const slNet         = slGrossAnnual * (1 - PLATFORM_FEE) * (1 - SHORTLET_OPEX)
-  const slGrossPct    = (slGrossAnnual / price) * 100
-  const slNetPct      = (slNet / price) * 100
-
-  // Cap rate
-  const capRate = (noi / price) * 100
-
-  // Cash on cash
-  const r       = MORTGAGE_RATE / 12
-  const n       = MORTGAGE_YEARS * 12
-  const loan    = price * (1 - DOWN_PCT)
-  const down    = price * DOWN_PCT
-  const monthly = loan * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
-  const annualCF = annualRent - (annualRent * OPEX) - (monthly * 12)
-  const coc     = (annualCF / down) * 100
-
-  // Affordability
-  const incomeMultiple = (monthly / 0.30) / MEDIAN_INCOME
-  const accessible = incomeMultiple >= 20 ? 'Top 1%' : incomeMultiple >= 10 ? 'Top 5%' : incomeMultiple >= 5 ? 'Top 10%' : 'Top 20%'
-
-  // Strategy
-  let strategy = 'buy_to_let', strategyLabel = 'Buy to Let', reason = `Traditional yield of ${tradNet.toFixed(1)}% net is reasonable for Lagos`
-  if (slNetPct > tradNet + 2) {
-    strategy = 'short_let'; strategyLabel = 'Short-let / Airbnb'
-    reason = `Short-let yields ${slNetPct.toFixed(1)}% net vs ${tradNet.toFixed(1)}% traditional — ${(slNetPct - tradNet).toFixed(1)}pp premium`
-  } else if (nd.yoy_change_pct > 8 && tradNet < 5) {
-    strategy = 'buy_hold'; strategyLabel = 'Buy & Hold'
-    reason = `${nd.yoy_change_pct}% annual appreciation makes capital gain the primary return`
-  } else if (tradNet < 3) {
-    strategy = 'review'; strategyLabel = 'Negotiate Hard'
-    reason = `Yields are thin at median price — push for 15-20% below asking`
+// Compute basic yield inline — no API needed
+function quickYield(price: number | null, neighborhood: string) {
+  if (!price || price === 0) return null
+  const rentBenchmarks: Record<string, number> = {
+    'lekki phase 1': 6_000_000, 'ikoyi': 14_000_000,
+    'victoria island': 12_000_000, 'lekki': 4_800_000,
+    'ikota': 4_500_000, 'chevron': 4_200_000, 'ajah': 3_200_000,
   }
-
-  return { tradGross, tradNet, noi, slGrossPct, slNetPct, slGrossAnnual, slNet, capRate, coc, annualCF, monthly, down, accessible, incomeMultiple, strategy, strategyLabel, reason, annualRent, nightly }
+  const rent = rentBenchmarks[neighborhood.toLowerCase()] || 3_000_000
+  return ((rent / price) * 100).toFixed(1)
 }
 
-// ─── Formatter ────────────────────────────────────────────────────────────
-
-function fmtN(n: number) {
-  if (n >= 1_000_000_000) return `₦${(n / 1_000_000_000).toFixed(1)}B`
-  if (n >= 1_000_000)     return `₦${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000)         return `₦${(n / 1_000).toFixed(0)}K`
-  return `₦${n.toFixed(0)}`
+function LockedBadge() {
+  return (
+    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 6, padding: '0.2rem 0.6rem', fontSize: '0.68rem', fontWeight: 600, color: '#F59E0B', cursor: 'pointer' }}>
+      🔒 Pro
+    </div>
+  )
 }
 
-// ─── Component ────────────────────────────────────────────────────────────
+export default function PropertySection({
+  neighborhood,
+  dark,
+}: {
+  neighborhood: string
+  dark: boolean
+}) {
+  const [props, setProps] = useState<Property[]>([])
+  const [loading, setLoading] = useState(true)
 
-export default function NeighborhoodPage() {
-  const params       = useParams()
-  const searchParams = useSearchParams()
-  const slug         = (params?.slug as string) || ''
-  const q            = searchParams?.get('q') || ''
-
-  const [dark,      setDark]      = useState(true)
-  const [bedrooms,  setBedrooms]  = useState(3)
-  const [price,     setPrice]     = useState(0)
-  const [priceInput,setPriceInput]= useState('')
-
-  const nd = NEIGHBORHOOD_DATA[slug]
+  const v = (d: string, l: string) => dark ? d : l
+  const bg3    = v('#162032', '#FFFFFF')
+  const text   = v('#F8FAFC', '#0F172A')
+  const text2  = v('rgba(248,250,252,0.65)', 'rgba(15,23,42,0.65)')
+  const text3  = v('rgba(248,250,252,0.35)', 'rgba(15,23,42,0.35)')
+  const border = v('rgba(248,250,252,0.07)', 'rgba(15,23,42,0.08)')
 
   useEffect(() => {
-    if (nd) setPrice(nd.median_sale_3bed)
-  }, [slug, nd])
+    async function load() {
+      setLoading(true)
+      try {
+        // Normalize slug to neighborhood name for query
+        const neighborhoodName = neighborhood
+          .split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+          .replace('Phase 1', 'Phase 1').replace('Phase 2', 'Phase 2')
 
-  const metrics = nd && price > 0 ? computeMetrics(nd, bedrooms, price) : null
+        const { createClient } = await import('@supabase/supabase-js')
+        const sb = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        )
+        const { data } = await sb
+          .from('properties')
+          .select('id,property_type,bedrooms,bathrooms,price_local,currency_code,listing_type,title_document_type,size_sqm,source_type,created_at,raw_data')
+          .or(`neighborhood.ilike.%${neighborhoodName}%,neighborhood.ilike.%${neighborhood.replace(/-/g,' ')}%`)
+          .order('created_at', { ascending: false })
+          .limit(12)
 
-  const css = {
-    '--bg':      dark ? '#0F172A' : '#F8FAFC',
-    '--bg2':     dark ? '#1E293B' : '#F1F5F9',
-    '--bg3':     dark ? '#273549' : '#E2E8F0',
-    '--text':    dark ? '#F8FAFC' : '#0F172A',
-    '--text2':   dark ? 'rgba(248,250,252,0.65)' : 'rgba(15,23,42,0.65)',
-    '--text3':   dark ? 'rgba(248,250,252,0.35)' : 'rgba(15,23,42,0.35)',
-    '--purple':  '#5B2EFF',
-    '--purpleL': '#7C5FFF',
-    '--teal':    dark ? '#14B8A6' : '#0D9488',
-    '--tealL':   '#2DD4BF',
-    '--border':  'rgba(91,46,255,0.18)',
-    '--borderL': dark ? 'rgba(248,250,252,0.07)' : 'rgba(15,23,42,0.08)',
-    '--card':    dark ? '#162032' : '#FFFFFF',
-    '--green':   '#22C55E',
-    '--red':     '#EF4444',
-    '--amber':   '#F59E0B',
-  } as React.CSSProperties
+        setProps((data as Property[]) || [])
+      } catch {
+        setProps([])
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [neighborhood])
 
-  const card = {
-    background: 'var(--card)',
-    border: '1px solid var(--borderL)',
-    borderRadius: 16,
-    padding: '1.5rem',
-    marginBottom: '1rem',
-  }
-
-  const label = {
-    fontSize: '0.68rem', fontWeight: 700,
-    color: 'var(--teal)',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.12em',
-    marginBottom: '0.35rem',
-    display: 'block',
-  }
-
-  const bigNum = (val: string, color?: string) => ({
-    fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
-    fontWeight: 800, letterSpacing: '-0.04em',
-    color: color || 'var(--text)',
-    lineHeight: 1,
-  })
-
-  const subText = {
-    fontSize: '0.72rem',
-    color: 'var(--text3)',
-    fontFamily: 'var(--font-mono)' as const,
-    marginTop: '0.25rem',
-  }
-
-  // Not found state
-  if (!nd) return (
-    <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center' }}>
-      <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⌕</div>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.5rem' }}>
-        "{q || slug}" not yet covered
-      </h1>
-      <p style={{ color: 'var(--text2)', marginBottom: '1.5rem', maxWidth: 380, lineHeight: 1.6 }}>
-        We're mapping Lagos neighborhood by neighborhood. This area is on our list.
-      </p>
-      <Link href="/" style={{ background: 'var(--purple)', color: '#fff', padding: '0.75rem 1.5rem', borderRadius: 10, textDecoration: 'none', fontWeight: 600, fontSize: '0.875rem' }}>
-        Search another area →
-      </Link>
+  if (loading) return (
+    <div style={{ padding: '2rem', textAlign: 'center', color: text3, fontSize: '0.82rem' }}>
+      Loading properties...
     </div>
   )
 
-  const demandColor = nd.demand === 'Very High' ? 'var(--green)' : nd.demand === 'High' ? 'var(--teal)' : 'var(--amber)'
+  if (props.length === 0) return (
+    <div style={{ padding: '2.5rem', textAlign: 'center', background: bg3, border: `1px solid ${border}`, borderRadius: 16 }}>
+      <div style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>🏗</div>
+      <div style={{ fontWeight: 700, color: text, marginBottom: '0.4rem', fontSize: '0.95rem' }}>
+        Seeding data for this area
+      </div>
+      <div style={{ fontSize: '0.82rem', color: text2, lineHeight: 1.6, maxWidth: 320, margin: '0 auto' }}>
+        We're verifying listings for this neighborhood. Check back soon — or contact us if you're an agency with properties here.
+      </div>
+    </div>
+  )
 
   return (
-    <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', transition: 'all 0.3s' }}>
-
-
-
-      {/* ── HERO ── */}
-      <section style={{
-        background: dark ? 'var(--bg2)' : 'var(--bg2)',
-        borderBottom: '1px solid var(--borderL)',
-        padding: '2.5rem 2rem',
-        position: 'relative', overflow: 'hidden',
-      }}>
-        <div style={{ position: 'absolute', top: -100, right: '10%', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(91,46,255,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
-
-        <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>
-            Lagos · {nd.tier} Area
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '1.25rem' }}>
+        <div>
+          <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.2rem' }}>
+            Verified Listings
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-            <div>
-              <h1 style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.04em', lineHeight: 1.05, marginBottom: '0.5rem' }}>
-                {nd.display}
-              </h1>
-              <p style={{ fontSize: '0.925rem', color: 'var(--text2)', maxWidth: 560, lineHeight: 1.65, fontWeight: 300 }}>
-                {nd.description}
-              </p>
-            </div>
-
-            {/* Key badges */}
-            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-              <div style={{ background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.08)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
-                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>Demand</div>
-                <div style={{ fontWeight: 800, color: demandColor, fontSize: '1rem' }}>{nd.demand}</div>
-              </div>
-              <div style={{ background: dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)', border: '1px solid rgba(91,46,255,0.2)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
-                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>YoY Price</div>
-                <div style={{ fontWeight: 800, color: 'var(--purpleL)', fontSize: '1rem' }}>+{nd.yoy_change_pct}%</div>
-              </div>
-              <div style={{ background: dark ? 'rgba(248,250,252,0.05)' : 'rgba(15,23,42,0.04)', border: '1px solid var(--borderL)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
-                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>Avg DOM</div>
-                <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: '1rem' }}>{nd.dom_avg}d</div>
-              </div>
-            </div>
+          <div style={{ fontWeight: 700, color: text, fontSize: '1rem' }}>
+            {props.length} properties in this area
           </div>
         </div>
-      </section>
-
-      {/* ── BODY ── */}
-      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2.5rem 2rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '2rem' }}>
-
-          {/* ── LEFT ── */}
-          <div>
-
-            {/* Scenario inputs */}
-            <div style={{ ...card, background: dark ? 'rgba(91,46,255,0.06)' : 'rgba(91,46,255,0.04)', borderColor: 'rgba(91,46,255,0.2)', marginBottom: '1.5rem' }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
-                ◈ Run Your Scenario
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <span style={label}>Property Price (₦)</span>
-                  <input
-                    type="text"
-                    value={priceInput || (price > 0 ? (price / 1_000_000).toFixed(0) + 'M' : '')}
-                    onChange={e => {
-                      setPriceInput(e.target.value)
-                      const num = parseFloat(e.target.value.replace(/[^0-9.]/g, ''))
-                      if (!isNaN(num)) {
-                        // Detect if they typed in millions or full
-                        const val = num > 10000 ? num : num * 1_000_000
-                        setPrice(val)
-                      }
-                    }}
-                    placeholder={`e.g. ${(nd.median_sale_3bed / 1_000_000).toFixed(0)}M`}
-                    style={{
-                      width: '100%', padding: '0.65rem 0.875rem',
-                      background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
-                      border: '1px solid var(--borderL)',
-                      borderRadius: 8, color: 'var(--text)',
-                      fontSize: '0.9rem', outline: 'none',
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  />
-                  <div style={{ ...subText, marginTop: '0.3rem' }}>Type 120M, 85000000, etc.</div>
-                </div>
-                <div>
-                  <span style={label}>Bedrooms</span>
-                  <div style={{ display: 'flex', gap: '0.4rem' }}>
-                    {[1, 2, 3, 4, 5].map(b => (
-                      <button key={b} onClick={() => setBedrooms(b)} style={{
-                        flex: 1, padding: '0.65rem 0',
-                        background: bedrooms === b ? 'var(--purple)' : 'transparent',
-                        color: bedrooms === b ? '#fff' : 'var(--text2)',
-                        border: `1px solid ${bedrooms === b ? 'var(--purple)' : 'var(--borderL)'}`,
-                        borderRadius: 8, cursor: 'pointer',
-                        fontSize: '0.85rem', fontWeight: 600,
-                        transition: 'all 0.15s',
-                      }}>{b}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div style={{ marginTop: '0.875rem', fontSize: '0.75rem', color: 'var(--text3)', lineHeight: 1.5 }}>
-                Metrics recalculate instantly. Rent and short-let rates estimated from verified {nd.display} benchmarks.
-                <span style={{ color: 'var(--teal)', marginLeft: '0.3rem' }}>You can override with your own figures.</span>
-              </div>
-            </div>
-
-            {/* Metrics grid */}
-            {metrics && (
-              <>
-                {/* Yield row */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                  {/* Traditional */}
-                  <div style={card}>
-                    <span style={label}>Traditional Yield</span>
-                    <div style={bigNum(metrics.tradGross.toFixed(1) + '%', metrics.tradGross >= 7 ? 'var(--green)' : metrics.tradGross >= 5 ? 'var(--amber)' : 'var(--red)')}>
-                      {metrics.tradGross.toFixed(2)}%
-                    </div>
-                    <div style={subText}>Net: {metrics.tradNet.toFixed(2)}%</div>
-                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
-                      Est. rent: {fmtN(metrics.annualRent)}/yr
-                    </div>
-                  </div>
-
-                  {/* Short-let */}
-                  <div style={card}>
-                    <span style={label}>Short-let / Airbnb Yield</span>
-                    <div style={bigNum(metrics.slGrossPct.toFixed(1) + '%', metrics.slGrossPct >= 15 ? 'var(--green)' : metrics.slGrossPct >= 10 ? 'var(--amber)' : 'var(--text)')}>
-                      {metrics.slGrossPct.toFixed(2)}%
-                    </div>
-                    <div style={subText}>Net: {metrics.slNetPct.toFixed(2)}%</div>
-                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
-                      {fmtN(metrics.nightly)}/night · {nd.occupancy_pct}% occ.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cap rate + CoC */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                  <div style={card}>
-                    <span style={label}>Cap Rate</span>
-                    <div style={bigNum(metrics.capRate.toFixed(2) + '%')}>
-                      {metrics.capRate.toFixed(2)}%
-                    </div>
-                    <div style={subText}>NOI: {fmtN(metrics.noi)}/yr</div>
-                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
-                      After {(OPEX * 100).toFixed(0)}% operating expenses
-                    </div>
-                  </div>
-
-                  <div style={card}>
-                    <span style={label}>Cash-on-Cash Return</span>
-                    <div style={bigNum((metrics.coc > 0 ? '+' : '') + metrics.coc.toFixed(1) + '%', metrics.coc > 0 ? 'var(--green)' : 'var(--red)')}>
-                      {metrics.coc > 0 ? '+' : ''}{metrics.coc.toFixed(2)}%
-                    </div>
-                    <div style={subText}>
-                      {metrics.coc < 0 ? 'Negative — Nigerian mortgage rates (22%) make leveraged buy challenging' : 'Positive cashflow after mortgage'}
-                    </div>
-                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
-                      Monthly mortgage: {fmtN(metrics.monthly)} · 30% down
-                    </div>
-                  </div>
-                </div>
-
-                {/* Market benchmarks */}
-                <div style={card}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
-                    Market Benchmarks · {nd.display}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                    {[
-                      { label: 'Median 3-Bed Sale', value: fmtN(nd.median_sale_3bed) },
-                      { label: 'Median Annual Rent', value: fmtN(nd.median_rent_3bed) },
-                      { label: 'Price / sqm', value: fmtN(nd.price_per_sqm) },
-                      { label: 'STR Nightly (3-Bed)', value: fmtN(nd.nightly_3bed) },
-                      { label: 'STR Occupancy', value: `${nd.occupancy_pct}%` },
-                      { label: 'YoY Appreciation', value: `+${nd.yoy_change_pct}%` },
-                    ].map(m => (
-                      <div key={m.label} style={{ padding: '0.875rem', background: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
-                        <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>{m.label}</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>{m.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Supply/Demand */}
-                <div style={card}>
-                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
-                    Supply / Demand Signals
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                    {[
-                      { label: 'Supply (Inventory)', score: nd.supply_score, invert: true },
-                      { label: 'Buyer Demand', score: nd.demand_score, invert: false },
-                    ].map(s => (
-                      <div key={s.label}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text2)', fontWeight: 500 }}>{s.label}</span>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{s.score}/10</span>
-                        </div>
-                        <div style={{ height: 6, background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', borderRadius: 100, overflow: 'hidden' }}>
-                          <div style={{
-                            height: '100%', width: `${s.score * 10}%`,
-                            background: s.invert
-                              ? s.score > 7 ? 'var(--amber)' : 'var(--green)'
-                              : s.score > 7 ? 'var(--green)' : 'var(--amber)',
-                            borderRadius: 100,
-                            transition: 'width 0.6s ease',
-                          }} />
-                        </div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginTop: '0.3rem' }}>
-                          {s.invert ? (s.score > 7 ? 'High inventory — more negotiation room' : 'Low inventory — competitive') : (s.score > 7 ? 'Strong demand — faster sales' : 'Moderate demand')}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-              </>
-            )}
-
-            {/* Key facts */}
-            <div style={card}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1rem' }}>
-                Market Intelligence
-              </div>
-              {nd.key_facts.map((f, i) => (
-                <div key={i} style={{ display: 'flex', gap: '0.75rem', padding: '0.6rem 0', borderBottom: i < nd.key_facts.length - 1 ? '1px solid var(--borderL)' : 'none' }}>
-                  <span style={{ color: 'var(--teal)', fontSize: '0.7rem', flexShrink: 0, marginTop: 3 }}>◆</span>
-                  <span style={{ fontSize: '0.875rem', color: 'var(--text2)', lineHeight: 1.5 }}>{f}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Title types */}
-            <div style={card}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1rem' }}>
-                Common Title Types
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {nd.title_types.map(t => (
-                  <span key={t} style={{
-                    padding: '0.3rem 0.75rem',
-                    background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.08)',
-                    border: '1px solid rgba(20,184,166,0.25)',
-                    borderRadius: 100, fontSize: '0.75rem',
-                    color: 'var(--teal)', fontWeight: 600,
-                  }}>
-                    ✓ {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ── RIGHT COLUMN ── */}
-          <div>
-
-            {/* Strategy signal */}
-            {metrics && (
-              <div style={{
-                background: dark ? 'linear-gradient(135deg, rgba(91,46,255,0.15) 0%, rgba(20,184,166,0.08) 100%)' : 'linear-gradient(135deg, rgba(91,46,255,0.06) 0%, rgba(20,184,166,0.04) 100%)',
-                border: '1px solid rgba(91,46,255,0.25)',
-                borderRadius: 16, padding: '1.5rem',
-                marginBottom: '1rem',
-              }}>
-                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block' }} />
-                  Zalone Strategy Signal
-                </div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text)', marginBottom: '0.4rem', letterSpacing: '-0.02em' }}>
-                  {metrics.strategyLabel}
-                </div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text2)', lineHeight: 1.55 }}>
-                  {metrics.reason}
-                </div>
-              </div>
-            )}
-
-            {/* Affordability */}
-            {metrics && (
-              <div style={card}>
-                <span style={label}>Buyer Profile</span>
-                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text)', marginBottom: '0.25rem' }}>
-                  {metrics.accessible} of Lagos earners
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text2)', lineHeight: 1.5, marginBottom: '0.875rem' }}>
-                  Requires ~{fmtN(metrics.monthly / 0.30)}/month income at 30% housing ratio
-                </div>
-                <div style={{ padding: '0.75rem', background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 10, fontSize: '0.78rem', color: 'var(--text3)', lineHeight: 1.5 }}>
-                  {metrics.incomeMultiple >= 10
-                    ? 'Target: Diaspora buyers, HNW individuals, institutional investors'
-                    : metrics.incomeMultiple >= 5
-                    ? 'Target: Senior professionals, dual-income households, SME owners'
-                    : 'Target: Mid-senior professionals, young executives'}
-                </div>
-              </div>
-            )}
-
-            {/* Best for / Risks */}
-            <div style={card}>
-              <div style={{ marginBottom: '1.25rem' }}>
-                <span style={label}>Best For</span>
-                {nd.best_for.map((b, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '0.5rem', padding: '0.4rem 0', alignItems: 'flex-start' }}>
-                    <span style={{ color: 'var(--green)', fontSize: '0.75rem', marginTop: 2, flexShrink: 0 }}>✓</span>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>{b}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ borderTop: '1px solid var(--borderL)', paddingTop: '1.25rem' }}>
-                <span style={{ ...label, color: 'var(--red)' }}>Risk Factors</span>
-                {nd.risks.map((r, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '0.5rem', padding: '0.4rem 0', alignItems: 'flex-start' }}>
-                    <span style={{ color: 'var(--amber)', fontSize: '0.75rem', marginTop: 2, flexShrink: 0 }}>⚠</span>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>{r}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Data note */}
-            <div style={{ padding: '1rem', background: dark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)', border: '1px solid var(--borderL)', borderRadius: 12, fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'var(--font-mono)', lineHeight: 1.6 }}>
-              Benchmarks from verified Lagos market research. Metrics computed from your scenario inputs. Always conduct independent due diligence. Data: Manop Intelligence.
-            </div>
-
-            {/* Agency CTA */}
-            <div style={{ marginTop: '1rem', background: dark ? 'rgba(91,46,255,0.08)' : 'rgba(91,46,255,0.04)', border: '1px solid rgba(91,46,255,0.2)', borderRadius: 16, padding: '1.25rem', textAlign: 'center' }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5rem' }}>
-                Agency in {nd.display}?
-              </div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text2)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                Get free intelligence reports on your listings. Investors see your properties with verified data.
-              </div>
-              <a href="mailto:partners@manop.africa" style={{ display: 'block', background: 'var(--purple)', color: '#fff', padding: '0.65rem 1rem', borderRadius: 10, textDecoration: 'none', fontWeight: 600, fontSize: '0.82rem' }}>
-                Become a Founding Partner →
-              </a>
-            </div>
-          </div>
+        <div style={{ fontSize: '0.72rem', color: text3 }}>
+          Source: {props[0]?.source_type || 'Agency Partner'}
         </div>
       </div>
 
-      <style>{`
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        a { color: inherit; }
-        input { transition: border-color 0.15s; }
-        input:focus { border-color: var(--purple) !important; outline: none; }
-        @media (max-width: 768px) {
-          div[style*="grid-template-columns: 1fr 380px"] {
-            display: block !important;
-          }
-          div[style*="grid-template-columns: repeat(3, 1fr)"] {
-            grid-template-columns: repeat(2, 1fr) !important;
-          }
-        }
-      `}</style>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
+        {props.map(p => {
+          const raw = (p.raw_data || {}) as Record<string, unknown>
+          const mediaUrls = Array.isArray(raw['media_urls']) ? raw['media_urls'] as string[] : []
+          const agentPhone = ((p.raw_data as Record<string, unknown>)?.['agent_phone'] as string || '').replace(/\D/g,'')
+          const sourceAgency = (raw['source_agency'] as string) || 'Verified Source'
+          const yieldEst = quickYield(p.price_local, neighborhood.replace(/-/g,' '))
+          const isRent = p.listing_type === 'for-rent' || p.listing_type === 'short-let'
+
+          return (
+            <div key={p.id} style={{
+              background: bg3,
+              border: `1px solid ${border}`,
+              borderRadius: 16, overflow: 'hidden',
+              transition: 'border-color 0.2s, transform 0.2s',
+              cursor: 'pointer',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(91,46,255,0.4)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = border; e.currentTarget.style.transform = 'translateY(0)' }}
+            >
+              {/* Image */}
+              <div style={{ height: 180, background: dark ? '#1E293B' : '#F1F5F9', position: 'relative', overflow: 'hidden' }}>
+                {mediaUrls[0] ? (
+                  <img src={mediaUrls[0]} alt="Property" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2rem', opacity: 0.3 }}>🏠</div>
+                )}
+                {/* Listing type badge */}
+                <div style={{ position: 'absolute', top: 10, left: 10, background: isRent ? 'rgba(20,184,166,0.9)' : 'rgba(91,46,255,0.9)', color: '#fff', borderRadius: 6, padding: '0.2rem 0.6rem', fontSize: '0.65rem', fontWeight: 700, backdropFilter: 'blur(4px)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  {p.listing_type?.replace(/-/g,' ') || 'For Sale'}
+                </div>
+                {/* Source */}
+                <div style={{ position: 'absolute', bottom: 10, right: 10, background: 'rgba(0,0,0,0.6)', color: '#fff', borderRadius: 6, padding: '0.15rem 0.5rem', fontSize: '0.6rem', fontWeight: 600, backdropFilter: 'blur(4px)' }}>
+                  {sourceAgency}
+                </div>
+              </div>
+
+              {/* Details */}
+              <div style={{ padding: '1.25rem' }}>
+                {/* Title + price */}
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <div style={{ fontWeight: 700, fontSize: '1rem', color: text, marginBottom: '0.2rem', letterSpacing: '-0.01em' }}>
+                    {p.bedrooms ? `${p.bedrooms}-Bed ` : ''}{p.property_type || 'Property'}
+                  </div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#7C5FFF', letterSpacing: '-0.03em' }}>
+                    {fmtN(p.price_local, p.currency_code)}
+                    {isRent && <span style={{ fontSize: '0.75rem', color: text2, fontWeight: 400 }}>/month</span>}
+                  </div>
+                </div>
+
+                {/* Specs */}
+                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '0.875rem' }}>
+                  {p.bedrooms && <span style={{ fontSize: '0.75rem', color: text2, background: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', padding: '0.2rem 0.5rem', borderRadius: 6 }}>🛏 {p.bedrooms} bed</span>}
+                  {p.bathrooms && <span style={{ fontSize: '0.75rem', color: text2, background: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', padding: '0.2rem 0.5rem', borderRadius: 6 }}>🚿 {p.bathrooms} bath</span>}
+                  {p.size_sqm && <span style={{ fontSize: '0.75rem', color: text2, background: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', padding: '0.2rem 0.5rem', borderRadius: 6 }}>📐 {p.size_sqm}m²</span>}
+                </div>
+
+                {/* Title document */}
+                {p.title_document_type && (
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(20,184,166,0.1)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 6, padding: '0.2rem 0.6rem', fontSize: '0.68rem', color: '#14B8A6', fontWeight: 600, marginBottom: '1rem' }}>
+                    ✓ {p.title_document_type}
+                  </div>
+                )}
+
+                {/* Intelligence preview — free vs locked */}
+                <div style={{ background: dark ? 'rgba(91,46,255,0.06)' : 'rgba(91,46,255,0.03)', border: '1px solid rgba(91,46,255,0.12)', borderRadius: 10, padding: '0.875rem', marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.6rem' }}>
+                    ◈ Quick Intelligence
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                    {/* Free — basic yield estimate */}
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.58rem', color: text3, marginBottom: '0.15rem' }}>Est. Yield</div>
+                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#22C55E' }}>
+                        {yieldEst ? `~${yieldEst}%` : '—'}
+                      </div>
+                    </div>
+                    {/* Locked — short-let yield */}
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.58rem', color: text3, marginBottom: '0.15rem' }}>STR Yield</div>
+                      <LockedBadge />
+                    </div>
+                    {/* Locked — cap rate */}
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.58rem', color: text3, marginBottom: '0.15rem' }}>Cap Rate</div>
+                      <LockedBadge />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <a href={`/property/${p.id}`} style={{ flex: 1, background: '#5B2EFF', color: '#fff', padding: '0.6rem 0.75rem', borderRadius: 8, textDecoration: 'none', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center' }}>
+                    Full Report →
+                  </a>
+                  {agentPhone && (
+                    <a href={`https://wa.me/${agentPhone}`} target="_blank" rel="noopener" style={{ background: '#25D366', color: '#fff', padding: '0.6rem 0.75rem', borderRadius: 8, textDecoration: 'none', fontSize: '0.78rem', fontWeight: 600, textAlign: 'center' }}>
+                      📱
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Upgrade CTA */}
+      <div style={{ marginTop: '1.5rem', background: dark ? 'linear-gradient(135deg, rgba(245,158,11,0.1) 0%, rgba(91,46,255,0.08) 100%)' : 'linear-gradient(135deg, rgba(245,158,11,0.05) 0%, rgba(91,46,255,0.04) 100%)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 14, padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <div style={{ fontWeight: 700, color: text, fontSize: '0.9rem', marginBottom: '0.2rem' }}>🔒 Unlock Full Intelligence</div>
+          <div style={{ fontSize: '0.78rem', color: text2 }}>See short-let yield, cap rate, cash-on-cash, and full market report for every property.</div>
+        </div>
+        <button style={{ background: '#F59E0B', color: '#fff', border: 'none', borderRadius: 8, padding: '0.6rem 1.25rem', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          Upgrade to Pro
+        </button>
+      </div>
     </div>
   )
 }
@@ -2628,832 +2483,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 </file>
 
-<file path="app/page.tsx">
-'use client'
-import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
-
-const MARKETS = [
-  'Lekki Phase 1, Lagos',
-  'Ikoyi, Lagos',
-  'Victoria Island, Lagos',
-  'Lekki, Lagos',
-  'Ikota, Lagos',
-  'Chevron, Lagos',
-  'Ajah, Lagos',
-  'Gbagada, Lagos',
-  'Yaba, Lagos',
-  'Ikeja GRA, Lagos',
-]
-
-const STATS = [
-  { value: '6–24%', label: 'Rental Yield Range' },
-  { value: '₦45M–₦280M', label: 'Market Price Range' },
-  { value: '13', label: 'Neighborhoods Covered' },
-  { value: 'Live', label: 'Lagos Intelligence' },
-]
-
-const FEATURES = [
-  {
-    icon: '◈',
-    title: 'Traditional Yield',
-    desc: 'Annual rental return as % of property value. Computed from verified Lagos benchmarks.',
-  },
-  {
-    icon: '◉',
-    title: 'Short-let / Airbnb Yield',
-    desc: 'Nightly rate × occupancy × 365. Lagos short-let market modelled per neighborhood.',
-  },
-  {
-    icon: '⬡',
-    title: 'Cap Rate & NOI',
-    desc: 'Net operating income after expenses. What the property actually earns, not what it asks.',
-  },
-  {
-    icon: '◇',
-    title: 'Cash-on-Cash Return',
-    desc: 'Return on your equity after Nigerian mortgage costs. Honest about the 22% rate reality.',
-  },
-  {
-    icon: '△',
-    title: 'Price vs Market',
-    desc: 'How this property sits against neighborhood median. Overpriced, underpriced, or fair.',
-  },
-  {
-    icon: '○',
-    title: 'Strategy Signal',
-    desc: 'Data-driven recommendation: buy-to-let, short-let, hold, or review the deal.',
-  },
-]
-
-export default function Home() {
-  const [dark, setDark] = useState(true)
-  const [query, setQuery] = useState('')
-  const [focused, setFocused] = useState(false)
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const [typed, setTyped] = useState('')
-  const [placeholder, setPlaceholder] = useState('')
-  const router = useRouter()
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  // Animated placeholder cycling
-  useEffect(() => {
-    const examples = ['Lekki Phase 1', 'Ikoyi', 'Victoria Island', 'Chevron', 'Ajah']
-    let i = 0, ci = 0, dir = 1
-    const interval = setInterval(() => {
-      const word = examples[i]
-      if (dir === 1) {
-        setPlaceholder('Search ' + word.slice(0, ci + 1) + '...')
-        ci++
-        if (ci >= word.length) { dir = -1; setTimeout(() => {}, 800) }
-      } else {
-        setPlaceholder('Search ' + word.slice(0, ci - 1) + '...')
-        ci--
-        if (ci <= 0) { dir = 1; i = (i + 1) % examples.length }
-      }
-    }, 80)
-    return () => clearInterval(interval)
-  }, [])
-
-  const handleInput = (val: string) => {
-    setQuery(val)
-    if (val.length > 1) {
-      setSuggestions(MARKETS.filter(m => m.toLowerCase().includes(val.toLowerCase())).slice(0, 5))
-    } else {
-      setSuggestions([])
-    }
-  }
-
-  const handleSearch = (val?: string) => {
-    const q = val || query
-    if (!q.trim()) return
-    const slug = q.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
-    router.push(`/neighborhood/${slug}?q=${encodeURIComponent(q)}`)
-  }
-
-  // CSS variables for dark/light
-  const css = dark ? {
-    '--bg':         '#0F172A',
-    '--bg2':        '#1E293B',
-    '--bg3':        '#273549',
-    '--text':       '#F8FAFC',
-    '--text2':      'rgba(248,250,252,0.65)',
-    '--text3':      'rgba(248,250,252,0.35)',
-    '--purple':     '#5B2EFF',
-    '--purpleL':    '#7C5FFF',
-    '--teal':       '#14B8A6',
-    '--tealL':      '#2DD4BF',
-    '--border':     'rgba(91,46,255,0.18)',
-    '--borderL':    'rgba(248,250,252,0.07)',
-    '--card':       '#162032',
-  } as React.CSSProperties : {
-    '--bg':         '#F8FAFC',
-    '--bg2':        '#F1F5F9',
-    '--bg3':        '#E2E8F0',
-    '--text':       '#0F172A',
-    '--text2':      'rgba(15,23,42,0.65)',
-    '--text3':      'rgba(15,23,42,0.35)',
-    '--purple':     '#5B2EFF',
-    '--purpleL':    '#7C5FFF',
-    '--teal':       '#0D9488',
-    '--tealL':      '#14B8A6',
-    '--border':     'rgba(91,46,255,0.2)',
-    '--borderL':    'rgba(15,23,42,0.08)',
-    '--card':       '#FFFFFF',
-  } as React.CSSProperties
-
-  return (
-    <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', transition: 'all 0.3s' }}>
-
-
-
-      {/* ── HERO ── */}
-      <section style={{
-        position: 'relative', overflow: 'hidden',
-        padding: 'clamp(5rem, 12vw, 9rem) 2rem clamp(4rem, 8vw, 7rem)',
-      }}>
-        {/* Ambient glows */}
-        <div style={{
-          position: 'absolute', top: -200, left: '30%',
-          width: 600, height: 600, borderRadius: '50%',
-          background: dark
-            ? 'radial-gradient(circle, rgba(91,46,255,0.18) 0%, transparent 70%)'
-            : 'radial-gradient(circle, rgba(91,46,255,0.08) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
-        <div style={{
-          position: 'absolute', bottom: -150, right: '10%',
-          width: 400, height: 400, borderRadius: '50%',
-          background: dark
-            ? 'radial-gradient(circle, rgba(20,184,166,0.12) 0%, transparent 70%)'
-            : 'radial-gradient(circle, rgba(20,184,166,0.06) 0%, transparent 70%)',
-          pointerEvents: 'none',
-        }} />
-
-        <div style={{
-          maxWidth: 760, margin: '0 auto',
-          textAlign: 'center', position: 'relative', zIndex: 1,
-        }}>
-
-          {/* Status pill */}
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
-            background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.08)',
-            border: '1px solid rgba(20,184,166,0.25)',
-            borderRadius: 100, padding: '0.3rem 0.875rem',
-            fontSize: '0.72rem', fontWeight: 600,
-            color: 'var(--teal)',
-            letterSpacing: '0.04em',
-            marginBottom: '2rem',
-          }}>
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%',
-              background: 'var(--teal)', display: 'inline-block',
-              animation: 'pulse 2s infinite',
-            }} />
-            Lagos · Phase 1 Active
-          </div>
-
-          {/* Headline */}
-          <h1 style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(2.4rem, 6vw, 4.5rem)',
-            fontWeight: 800, lineHeight: 1.05,
-            letterSpacing: '-0.04em',
-            color: 'var(--text)',
-            marginBottom: '1.25rem',
-          }}>
-            Invest in African real estate{' '}
-            <span style={{
-              background: 'linear-gradient(135deg, #5B2EFF 0%, #14B8A6 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}>
-              with real data.
-            </span>
-          </h1>
-
-          <p style={{
-            fontSize: 'clamp(1rem, 2vw, 1.15rem)',
-            color: 'var(--text2)',
-            lineHeight: 1.7, maxWidth: 540, margin: '0 auto 2.5rem',
-            fontWeight: 300,
-          }}>
-            Search any Lagos neighborhood to see verified yield analysis,
-            cap rates, and market benchmarks — before you invest a naira.
-          </p>
-
-          {/* ── SEARCH BAR ── */}
-          <div style={{
-            position: 'relative', maxWidth: 580, margin: '0 auto',
-          }}>
-            <div style={{
-              display: 'flex', gap: 0,
-              background: 'var(--card)',
-              border: `1.5px solid ${focused ? 'var(--purple)' : 'var(--borderL)'}`,
-              borderRadius: 14,
-              boxShadow: focused
-                ? '0 0 0 4px rgba(91,46,255,0.12), 0 8px 32px rgba(0,0,0,0.15)'
-                : '0 4px 24px rgba(0,0,0,0.08)',
-              overflow: 'hidden',
-              transition: 'border-color 0.2s, box-shadow 0.2s',
-            }}>
-              {/* Search icon */}
-              <div style={{
-                padding: '0 1rem 0 1.25rem',
-                display: 'flex', alignItems: 'center',
-                color: focused ? 'var(--purple)' : 'var(--text3)',
-                fontSize: '1.1rem', flexShrink: 0,
-                transition: 'color 0.2s',
-              }}>
-                ⌕
-              </div>
-
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={e => handleInput(e.target.value)}
-                onFocus={() => setFocused(true)}
-                onBlur={() => setTimeout(() => { setFocused(false); setSuggestions([]) }, 150)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                placeholder={placeholder || 'Search a neighborhood, e.g. Lekki Phase 1...'}
-                style={{
-                  flex: 1, padding: '1rem 0.5rem',
-                  background: 'transparent', border: 'none', outline: 'none',
-                  fontSize: '0.95rem', color: 'var(--text)',
-                  fontFamily: 'var(--font-display)',
-                }}
-              />
-
-              <button
-                onClick={() => handleSearch()}
-                style={{
-                  background: 'var(--purple)',
-                  color: '#fff', border: 'none',
-                  padding: '0 1.5rem',
-                  fontSize: '0.875rem', fontWeight: 600,
-                  cursor: 'pointer',
-                  borderRadius: '0 12px 12px 0',
-                  whiteSpace: 'nowrap',
-                  flexShrink: 0,
-                  fontFamily: 'var(--font-display)',
-                  transition: 'background 0.15s',
-                }}
-              >
-                Analyze →
-              </button>
-            </div>
-
-            {/* Suggestions dropdown */}
-            {suggestions.length > 0 && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 50,
-                background: 'var(--card)',
-                border: '1px solid var(--borderL)',
-                borderRadius: 12,
-                boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
-                overflow: 'hidden',
-              }}>
-                {suggestions.map(s => (
-                  <button
-                    key={s}
-                    onMouseDown={() => { setQuery(s); setSuggestions([]); handleSearch(s) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.75rem',
-                      width: '100%', padding: '0.75rem 1.25rem',
-                      background: 'transparent', border: 'none',
-                      textAlign: 'left', cursor: 'pointer',
-                      color: 'var(--text)', fontSize: '0.875rem',
-                      borderBottom: '1px solid var(--borderL)',
-                      fontFamily: 'var(--font-display)',
-                      transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={e => (e.currentTarget.style.background = dark ? 'rgba(91,46,255,0.08)' : '#F1F5F9')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    <span style={{ color: 'var(--teal)', fontSize: '0.8rem' }}>📍</span>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Quick market chips */}
-          <div style={{
-            display: 'flex', gap: '0.5rem', flexWrap: 'wrap',
-            justifyContent: 'center', marginTop: '1.25rem',
-          }}>
-            <span style={{
-              fontSize: '0.72rem', color: 'var(--text3)',
-              marginRight: '0.25rem', alignSelf: 'center',
-            }}>
-              Popular:
-            </span>
-            {['Lekki Phase 1', 'Ikoyi', 'Victoria Island', 'Chevron', 'Ajah'].map(area => (
-              <button
-                key={area}
-                onClick={() => { setQuery(area); handleSearch(area) }}
-                style={{
-                  padding: '0.3rem 0.75rem',
-                  background: dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)',
-                  border: '1px solid rgba(91,46,255,0.2)',
-                  borderRadius: 100, cursor: 'pointer',
-                  fontSize: '0.75rem', fontWeight: 500,
-                  color: 'var(--purpleL)',
-                  fontFamily: 'var(--font-display)',
-                  transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(91,46,255,0.18)'; e.currentTarget.style.color = '#fff' }}
-                onMouseLeave={e => { e.currentTarget.style.background = dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)'; e.currentTarget.style.color = 'var(--purpleL)' }}
-              >
-                {area}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── STATS BAR ── */}
-      <div style={{
-        borderTop: '1px solid var(--borderL)',
-        borderBottom: '1px solid var(--borderL)',
-        background: dark ? 'rgba(30,41,59,0.5)' : 'var(--bg2)',
-      }}>
-        <div style={{
-          maxWidth: 900, margin: '0 auto',
-          padding: '1.75rem 2rem',
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 0,
-        }}>
-          {STATS.map((s, i) => (
-            <div key={s.label} style={{
-              textAlign: 'center',
-              borderRight: i < 3 ? '1px solid var(--borderL)' : 'none',
-              padding: '0 1.5rem',
-            }}>
-              <div style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 'clamp(1.3rem, 2.5vw, 1.8rem)',
-                fontWeight: 800, color: 'var(--text)',
-                letterSpacing: '-0.03em', lineHeight: 1,
-                marginBottom: '0.35rem',
-              }}>
-                {s.value}
-              </div>
-              <div style={{
-                fontSize: '0.68rem', fontWeight: 600,
-                color: 'var(--text3)',
-                textTransform: 'uppercase', letterSpacing: '0.1em',
-              }}>
-                {s.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── WHAT ZALONE COMPUTES ── */}
-      <section style={{ maxWidth: 1100, margin: '0 auto', padding: '5rem 2rem' }}>
-        <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
-            fontSize: '0.7rem', fontWeight: 700, color: 'var(--teal)',
-            textTransform: 'uppercase', letterSpacing: '0.15em',
-            marginBottom: '0.875rem',
-          }}>
-            <span style={{ width: 20, height: 2, background: 'var(--teal)', display: 'inline-block' }} />
-            What Zalone Computes
-            <span style={{ width: 20, height: 2, background: 'var(--teal)', display: 'inline-block' }} />
-          </div>
-          <h2 style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(1.8rem, 3.5vw, 2.6rem)',
-            fontWeight: 800, color: 'var(--text)',
-            letterSpacing: '-0.04em', lineHeight: 1.1,
-            marginBottom: '0.75rem',
-          }}>
-            Not listings. Intelligence.
-          </h2>
-          <p style={{
-            fontSize: '1rem', color: 'var(--text2)',
-            maxWidth: 480, margin: '0 auto', lineHeight: 1.7, fontWeight: 300,
-          }}>
-            Every neighborhood search returns real financial metrics — computed
-            from verified Lagos market benchmarks, not estimated from thin air.
-          </p>
-        </div>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: '1rem',
-        }}>
-          {FEATURES.map(f => (
-            <div key={f.title} style={{
-              background: 'var(--card)',
-              border: '1px solid var(--borderL)',
-              borderRadius: 16, padding: '1.5rem',
-              transition: 'border-color 0.2s, transform 0.2s',
-              cursor: 'default',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.borderColor = 'rgba(91,46,255,0.35)'
-              e.currentTarget.style.transform = 'translateY(-2px)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.borderColor = 'var(--borderL)'
-              e.currentTarget.style.transform = 'translateY(0)'
-            }}
-            >
-              <div style={{
-                fontSize: '1.4rem', color: 'var(--teal)',
-                marginBottom: '0.75rem', lineHeight: 1,
-              }}>
-                {f.icon}
-              </div>
-              <div style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: '1rem', fontWeight: 700,
-                color: 'var(--text)', marginBottom: '0.4rem',
-                letterSpacing: '-0.01em',
-              }}>
-                {f.title}
-              </div>
-              <div style={{
-                fontSize: '0.85rem', color: 'var(--text2)',
-                lineHeight: 1.6, fontWeight: 300,
-              }}>
-                {f.desc}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── HOW IT WORKS ── */}
-      <section style={{
-        background: dark ? 'var(--bg2)' : 'var(--bg2)',
-        borderTop: '1px solid var(--borderL)',
-        borderBottom: '1px solid var(--borderL)',
-      }}>
-        <div style={{ maxWidth: 800, margin: '0 auto', padding: '5rem 2rem', textAlign: 'center' }}>
-          <div style={{
-            fontSize: '0.7rem', fontWeight: 700, color: 'var(--teal)',
-            textTransform: 'uppercase', letterSpacing: '0.15em',
-            marginBottom: '1rem',
-          }}>
-            How It Works
-          </div>
-          <h2 style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
-            fontWeight: 800, color: 'var(--text)',
-            letterSpacing: '-0.03em', marginBottom: '3rem',
-          }}>
-            Search a neighborhood. Get your report.
-          </h2>
-
-          <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '2rem',
-          }}>
-            {[
-              { step: '01', title: 'Search', desc: 'Enter any Lagos neighborhood — Lekki, Ikoyi, Chevron, anywhere we cover.' },
-              { step: '02', title: 'Analyze', desc: 'Zalone computes yield, cap rate, cash-on-cash, and market position instantly.' },
-              { step: '03', title: 'Decide', desc: 'See the strategy signal. Buy, hold, short-let, or walk away — with data behind you.' },
-            ].map(s => (
-              <div key={s.step} style={{ textAlign: 'center' }}>
-                <div style={{
-                  width: 48, height: 48, borderRadius: '50%',
-                  background: 'rgba(91,46,255,0.12)',
-                  border: '1px solid rgba(91,46,255,0.25)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 1rem',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '0.72rem', fontWeight: 700,
-                  color: 'var(--purpleL)',
-                  letterSpacing: '0.06em',
-                }}>
-                  {s.step}
-                </div>
-                <div style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: '1rem', fontWeight: 700,
-                  color: 'var(--text)', marginBottom: '0.5rem',
-                }}>
-                  {s.title}
-                </div>
-                <div style={{
-                  fontSize: '0.85rem', color: 'var(--text2)',
-                  lineHeight: 1.6, fontWeight: 300,
-                }}>
-                  {s.desc}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={() => inputRef.current?.focus()}
-            style={{
-              marginTop: '3rem',
-              background: 'var(--purple)', color: '#fff',
-              border: 'none', borderRadius: 10,
-              padding: '0.875rem 2rem',
-              fontFamily: 'var(--font-display)',
-              fontSize: '0.9rem', fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'background 0.15s, transform 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--purpleL)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--purple)'; e.currentTarget.style.transform = 'translateY(0)' }}
-          >
-            Start Analyzing →
-          </button>
-        </div>
-      </section>
-
-      {/* ── AGENCY PARTNER CTA ── */}
-      <section style={{ maxWidth: 960, margin: '0 auto', padding: '5rem 2rem' }}>
-        <div style={{
-          background: dark
-            ? 'linear-gradient(135deg, rgba(91,46,255,0.12) 0%, rgba(20,184,166,0.06) 100%)'
-            : 'linear-gradient(135deg, rgba(91,46,255,0.05) 0%, rgba(20,184,166,0.03) 100%)',
-          border: '1px solid rgba(91,46,255,0.2)',
-          borderRadius: 24, padding: 'clamp(2rem, 4vw, 3.5rem)',
-          position: 'relative', overflow: 'hidden',
-          display: 'flex', gap: '2rem',
-          justifyContent: 'space-between', alignItems: 'center',
-          flexWrap: 'wrap',
-        }}>
-          <div style={{
-            position: 'absolute', top: -80, right: -60,
-            width: 280, height: 280, borderRadius: '50%',
-            background: 'radial-gradient(circle, rgba(91,46,255,0.12) 0%, transparent 70%)',
-            pointerEvents: 'none',
-          }} />
-          <div style={{ position: 'relative', zIndex: 1, maxWidth: 460 }}>
-            <div style={{
-              fontSize: '0.68rem', fontWeight: 700, color: 'var(--teal)',
-              textTransform: 'uppercase', letterSpacing: '0.14em',
-              marginBottom: '0.875rem',
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-            }}>
-              <span style={{ width: 14, height: 2, background: 'var(--teal)', display: 'inline-block' }} />
-              Founding Agency Partners
-            </div>
-            <h3 style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 'clamp(1.4rem, 2.5vw, 1.9rem)',
-              fontWeight: 800, color: 'var(--text)',
-              letterSpacing: '-0.03em', lineHeight: 1.15,
-              marginBottom: '0.875rem',
-            }}>
-              Your listings get intelligence.<br />Free. Forever.
-            </h3>
-            <p style={{
-              fontSize: '0.9rem', color: 'var(--text2)',
-              lineHeight: 1.7, fontWeight: 300,
-            }}>
-              Founding agency partners receive free yield analysis and cap rate
-              reports on every listing they share. Investors see your properties
-              with verified intelligence. You get notified when they enquire.
-            </p>
-          </div>
-          <a
-            href="mailto:partners@manop.africa"
-            style={{
-              background: 'var(--purple)', color: '#fff',
-              padding: '0.875rem 1.75rem',
-              borderRadius: 12,
-              fontSize: '0.9rem', fontWeight: 600,
-              textDecoration: 'none',
-              whiteSpace: 'nowrap',
-              fontFamily: 'var(--font-display)',
-              position: 'relative', zIndex: 1,
-              transition: 'background 0.15s, transform 0.15s',
-              display: 'inline-block',
-            }}
-          >
-            Become a Founding Partner →
-          </a>
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
-      <footer style={{
-        background: dark ? 'var(--bg2)' : 'var(--bg2)',
-        borderTop: '1px solid var(--borderL)',
-        padding: '2.5rem 2rem',
-      }}>
-        <div style={{
-          maxWidth: 1100, margin: '0 auto',
-          display: 'flex', justifyContent: 'space-between',
-          alignItems: 'center', flexWrap: 'wrap', gap: '1rem',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <div style={{
-              width: 28, height: 28, borderRadius: 8,
-              background: 'var(--purple)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.85rem', fontWeight: 800, color: '#fff',
-              fontFamily: 'var(--font-display)',
-            }}>Z</div>
-            <div>
-              <div style={{
-                fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)',
-                fontFamily: 'var(--font-display)',
-              }}>
-                Zalone
-              </div>
-              <div style={{ fontSize: '0.65rem', color: 'var(--text3)' }}>
-                Lagos · Nigeria · V1
-              </div>
-            </div>
-          </div>
-          <div style={{
-            display: 'flex', gap: '1.5rem',
-            fontSize: '0.8rem', color: 'var(--text2)',
-          }}>
-            <a href="/search" style={{ color: 'var(--text2)', textDecoration: 'none' }}>Properties</a>
-            <a href="#" style={{ color: 'var(--text2)', textDecoration: 'none' }}>Markets</a>
-            <a href="mailto:partners@manop.africa" style={{ color: 'var(--text2)', textDecoration: 'none' }}>
-              Agency Partners
-            </a>
-          </div>
-          <div style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: '0.68rem', color: 'var(--text3)',
-            letterSpacing: '0.04em',
-          }}>
-            Powered by Manop Intelligence
-          </div>
-        </div>
-      </footer>
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(20,184,166,0.4); }
-          50% { opacity: 0.6; box-shadow: 0 0 0 4px rgba(20,184,166,0); }
-        }
-        @media (min-width: 640px) {
-          .nav-link { display: block !important; }
-        }
-        @media (max-width: 639px) {
-          .nav-link { display: none !important; }
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        a { color: inherit; }
-        input::placeholder { color: rgba(148,163,184,0.6); }
-      `}</style>
-    </div>
-  )
-}
-</file>
-
-<file path="components/NavBar.tsx">
-'use client'
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-
-// Global dark mode — stored in localStorage so it persists
-export default function NavBar() {
-  const [dark, setDark] = useState(true)
-  const [scrolled, setScrolled] = useState(false)
-
-  useEffect(() => {
-    const saved = localStorage.getItem('zalone-dark')
-    if (saved !== null) setDark(saved === 'true')
-
-    const onScroll = () => setScrolled(window.scrollY > 10)
-    window.addEventListener('scroll', onScroll)
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  const toggle = () => {
-    const next = !dark
-    setDark(next)
-    localStorage.setItem('zalone-dark', String(next))
-    // Broadcast to page so it can react
-    window.dispatchEvent(new CustomEvent('zalone-theme', { detail: next }))
-    // Also set on document for CSS var access
-    document.documentElement.setAttribute('data-theme', next ? 'dark' : 'light')
-  }
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
-  }, [dark])
-
-  const bg = dark
-    ? `rgba(15,23,42,${scrolled ? '0.96' : '0.88'})`
-    : `rgba(248,250,252,${scrolled ? '0.98' : '0.92'})`
-
-  return (
-    <nav style={{
-      position: 'sticky', top: 0, zIndex: 200,
-      background: bg,
-      backdropFilter: 'blur(20px)',
-      borderBottom: `1px solid ${dark ? 'rgba(248,250,252,0.07)' : 'rgba(15,23,42,0.08)'}`,
-      padding: '0 2rem',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      height: 64,
-      transition: 'background 0.3s',
-    }}>
-
-      {/* Brand */}
-      <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 9,
-          background: '#5B2EFF',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '1rem', fontWeight: 800, color: '#fff',
-          letterSpacing: '-0.02em',
-        }}>
-          Z
-        </div>
-        <div>
-          <div style={{
-            fontSize: '1rem', fontWeight: 700,
-            color: dark ? '#F8FAFC' : '#0F172A',
-            letterSpacing: '-0.02em',
-            lineHeight: 1.1,
-          }}>
-            Zalone
-          </div>
-          <div style={{
-            fontSize: '0.55rem', fontWeight: 600,
-            color: '#14B8A6', letterSpacing: '0.12em',
-            textTransform: 'uppercase',
-          }}>
-            Africa Intelligence
-          </div>
-        </div>
-      </Link>
-
-      {/* Links + controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-        {/* Desktop nav links */}
-        <Link href="/search" style={{
-          fontSize: '0.82rem', fontWeight: 500,
-          color: dark ? 'rgba(248,250,252,0.65)' : 'rgba(15,23,42,0.65)',
-          padding: '0.4rem 0.875rem', borderRadius: 8,
-          textDecoration: 'none', transition: 'all 0.15s',
-        }}>
-          Properties
-        </Link>
-
-        {/* Dark/light toggle */}
-        <button
-          onClick={toggle}
-          aria-label="Toggle dark mode"
-          style={{
-            width: 42, height: 24,
-            borderRadius: 100,
-            background: dark ? '#5B2EFF' : '#CBD5E1',
-            border: 'none', cursor: 'pointer',
-            position: 'relative',
-            transition: 'background 0.25s',
-            marginLeft: '0.5rem', marginRight: '0.5rem',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{
-            position: 'absolute',
-            top: 3, left: dark ? 21 : 3,
-            width: 18, height: 18,
-            borderRadius: '50%',
-            background: '#fff',
-            transition: 'left 0.25s',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.65rem',
-          }}>
-            {dark ? '☀' : '☾'}
-          </div>
-        </button>
-
-        {/* Agency CTA */}
-        <a
-          href="mailto:partners@manop.africa"
-          style={{
-            background: '#5B2EFF', color: '#fff',
-            padding: '0.42rem 1rem',
-            borderRadius: 8,
-            fontSize: '0.8rem', fontWeight: 600,
-            textDecoration: 'none',
-            whiteSpace: 'nowrap',
-            transition: 'background 0.15s',
-          }}
-        >
-          Agency Partner →
-        </a>
-      </div>
-    </nav>
-  )
-}
-</file>
-
 <file path="lib/intelligence.ts">
 // lib/intelligence.ts
 // Zalone Intelligence Engine client
@@ -4155,6 +3184,36 @@ export async function getStats() {
 }
 </file>
 
+<file path="lib/theme.ts">
+// lib/theme.ts
+// Shared dark mode state management across all pages
+// NavBar writes → pages listen → stays in sync
+
+export const THEME_KEY   = 'zalone-dark'
+export const THEME_EVENT = 'zalone-theme'
+
+export function getInitialDark(): boolean {
+  if (typeof window === 'undefined') return true
+  const saved = localStorage.getItem(THEME_KEY)
+  if (saved !== null) return saved === 'true'
+  // Default to dark — our brand is dark-first
+  return true
+}
+
+export function setTheme(dark: boolean) {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(THEME_KEY, String(dark))
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  window.dispatchEvent(new CustomEvent(THEME_EVENT, { detail: dark }))
+}
+
+export function listenTheme(cb: (dark: boolean) => void): () => void {
+  const handler = (e: Event) => cb((e as CustomEvent<boolean>).detail)
+  window.addEventListener(THEME_EVENT, handler)
+  return () => window.removeEventListener(THEME_EVENT, handler)
+}
+</file>
+
 <file path=".gitignore">
 node_modules/
 .next/
@@ -4211,6 +3270,115 @@ module.exports = nextConfig
 module.exports = { plugins: { tailwindcss: {}, autoprefixer: {} } }
 </file>
 
+<file path="seed_lekki_phase1.py">
+#!/usr/bin/env python3
+"""
+seed_lekki_phase1.py
+────────────────────
+Seeds verified Lekki Phase 1 property data into Supabase.
+Run from anywhere:
+  SUPABASE_URL=xxx SUPABASE_KEY=yyy python3 seed_lekki_phase1.py
+
+Source: Manual research — Property Pro + Vala Homes (April 2026)
+Records: 25 verified listings, 1 anomaly removed (₦1M price error)
+"""
+
+import os, json
+from datetime import datetime
+
+try:
+    from supabase import create_client
+except ImportError:
+    print("Install: pip install supabase")
+    exit(1)
+
+SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://ftbmfjkrgcbykombxdlh.supabase.co')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY') or os.environ.get('SUPABASE_SERVICE_KEY')
+
+if not SUPABASE_KEY:
+    print("Set SUPABASE_KEY environment variable")
+    exit(1)
+
+sb = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# ─── Verified Records ─────────────────────────────────────────────────────
+# Source: lekki_property_data_template.xlsx — April 2026
+# Platforms: Property Pro (5), Vala Homes (20)
+# Anomaly excluded: Row 8 (₦1,000,000 — data entry error)
+
+RECORDS = [
+    # Property Pro listings
+    {'property_type':'duplex',     'bedrooms':5,'price_local':870_000_000,'raw_data':{'listing_id':'1PHAG','platform':'Property Pro','agent_name':'Tugaris Realtor','notes':'Fully serviced luxury duplex, CCTV, fitted kitchen, gated estate','date_listed':'2026-04-08'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':290_000_000,'raw_data':{'listing_id':'4PFMH','platform':'Property Pro','source_url':'https://propertypro.ng/property/2-bedroom-flat-apartment-for-sale-freedom-way-lekki-phase-1-lekki-lagos-4PFMH','agent_name':'Own Your Size Nigeria Limited','sub_location':'Freedom Way','notes':'Fully serviced luxury apartment, CCTV, fitted kitchen, gated estate','date_listed':'2026-03-28'}},
+    {'property_type':'duplex',     'bedrooms':4,'price_local':1_000_000_000,'raw_data':{'listing_id':'2PFMR','platform':'Property Pro','source_url':'https://propertypro.ng/property/4-bedroom-house-for-sale-gabby-adeosun-street-lekki-phase-1-lekki-lagos-2PFMR','agent_name':'Own Your Size Nigeria Limited','sub_location':'Gabby Adeosun Street','notes':'4BR Duplex in Lekki 1. All rooms en-suite, with servant\'s room en-suite and gate house en-suite. 350sqm','date_listed':'2026-03-31'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':190_000_000,'raw_data':{'listing_id':'1PGKA','platform':'Property Pro','agent_name':'Own Your Size Nigeria Limited','notes':'Newly Built 2 Bedroom Apartment'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':220_000_000,'raw_data':{'listing_id':'2NKBE','platform':'Property Pro','agent_name':'Tugaris Realtor','notes':'2 Bedroom Apartment'}},
+    # Vala Homes listings
+    {'property_type':'duplex',     'bedrooms':3,'price_local':600_000_000,'raw_data':{'platform':'Vala Homes','agent_name':'Precious Nzeh','notes':'Three bedroom terrace duplex'}},
+    {'property_type':'duplex',     'bedrooms':4,'price_local':650_000_000,'raw_data':{'platform':'Vala Homes','agent_name':'Precious Nzeh','notes':'Four bedroom terrace duplex'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':220_000_000,'raw_data':{'platform':'Vala Homes','agent_name':'Precious Nzeh','notes':'Two bedroom apartment with BQ'}},
+    {'property_type':'apartment',  'bedrooms':1,'price_local':150_000_000,'raw_data':{'platform':'Vala Homes','agent_name':'Precious Nzeh','notes':'One bedroom apartment with BQ'}},
+    {'property_type':'maisonette', 'bedrooms':4,'price_local':800_000_000,'raw_data':{'platform':'Vala Homes','agent_name':'Precious Nzeh','notes':'Luxury four bedroom maisonette'}},
+    {'property_type':'apartment',  'bedrooms':3,'price_local':400_000_000,'raw_data':{'listing_id':'unref','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':350_000_000,'raw_data':{'listing_id':'730lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':270_000_000,'raw_data':{'listing_id':'729lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':3,'price_local':320_000_000,'raw_data':{'listing_id':'706lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':294_000_000,'raw_data':{'listing_id':'705lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':3,'price_local':494_000_000,'raw_data':{'listing_id':'606lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':1,'price_local':199_000_000,'raw_data':{'listing_id':'604lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':299_000_000,'raw_data':{'listing_id':'591lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':3,'price_local':399_000_000,'raw_data':{'listing_id':'590lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':4,'price_local':385_000_000,'raw_data':{'listing_id':'579lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':230_000_000,'raw_data':{'listing_id':'555lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':170_000_000,'raw_data':{'listing_id':'495lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':3,'price_local':225_000_000,'raw_data':{'listing_id':'488lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'apartment',  'bedrooms':2,'price_local':240_000_000,'raw_data':{'listing_id':'487lekkip1','platform':'Vala Homes','agent_name':'Precious Nzeh'}},
+    {'property_type':'duplex',     'bedrooms':5,'price_local':970_000_000,'raw_data':{'listing_id':'429lekkip1','platform':'Vala Homes','agent_name':'Fortune Abraham','notes':'Newly built five bedroom detached duplex'}},
+]
+
+# Add common fields
+for r in RECORDS:
+    r.update({
+        'city':          'Lagos',
+        'neighborhood':  'Lekki Phase 1',
+        'country_code':  'NG',
+        'currency_code': 'NGN',
+        'listing_type':  'for-sale',
+        'source_type':   'research-verified',
+        'confidence':    0.88,
+    })
+    r['raw_data']['imported_from'] = 'lekki_property_data_template.xlsx'
+    r['raw_data']['imported_at']   = datetime.now().isoformat()
+
+print(f"Seeding {len(RECORDS)} Lekki Phase 1 records into Supabase...")
+print(f"Source: Property Pro ({sum(1 for r in RECORDS if r['raw_data']['platform']=='Property Pro')}) + Vala Homes ({sum(1 for r in RECORDS if r['raw_data']['platform']=='Vala Homes')})")
+print()
+
+success = 0
+failed  = 0
+
+for r in RECORDS:
+    try:
+        result = sb.table('properties').insert(r).execute()
+        if result.data:
+            beds = r['bedrooms']
+            price = r['price_local']
+            plat  = r['raw_data']['platform']
+            print(f"  ✓ {beds}bed {r['property_type']} | ₦{price/1_000_000:.0f}M | {plat}")
+            success += 1
+        else:
+            print(f"  ✗ Failed: {r}")
+            failed += 1
+    except Exception as e:
+        print(f"  ✗ Error: {e} — {r['bedrooms']}bed ₦{r['price_local']/1_000_000:.0f}M")
+        failed += 1
+
+print(f"\n{'='*50}")
+print(f"Done: {success} inserted, {failed} failed")
+print(f"\nLekki Phase 1 is now seeded.")
+print(f"Visit: localhost:3000/neighborhood/lekki-phase-1")
+</file>
+
 <file path="tailwind.config.js">
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -4241,6 +3409,1365 @@ module.exports = {
   },
   "include": ["next-env.d.ts", ".next/types/**/*.ts", "**/*.ts", "**/*.tsx", "**/*.css"],
   "exclude": ["node_modules"]
+}
+</file>
+
+<file path="app/neighborhood/[slug]/page.tsx">
+'use client'
+
+import { useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+const PropertySection = dynamic(() => import('./PropertySection'), { ssr: false })
+import { useParams, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+
+// ─── Lagos Neighborhood Intelligence Data ──────────────────────────────────
+// Seeded from manual market research — Manop grows this over time
+
+const NEIGHBORHOOD_DATA: Record<string, {
+  display:          string
+  city:             string
+  tier:             string
+  demand:           string
+  description:      string
+  median_sale_3bed: number
+  median_rent_3bed: number
+  nightly_3bed:     number
+  occupancy_pct:    number
+  price_per_sqm:    number
+  dom_avg:          number
+  yoy_change_pct:   number
+  supply_score:     number  // 1-10 (10 = many listings)
+  demand_score:     number  // 1-10
+  title_types:      string[]
+  key_facts:        string[]
+  best_for:         string[]
+  risks:            string[]
+}> = {
+  'lekki-phase-1': {
+    display:          'Lekki Phase 1',
+    city:             'Lagos',
+    tier:             'Premium',
+    demand:           'High',
+    description:      'Lagos\'s most sought-after residential corridor. Dense with embassies, corporate tenants, and diaspora buyers. Short-let demand is consistently strong year-round.',
+    median_sale_3bed: 120_000_000,
+    median_rent_3bed: 6_000_000,
+    nightly_3bed:     95_000,
+    occupancy_pct:    60,
+    price_per_sqm:    200_000,
+    dom_avg:          75,
+    yoy_change_pct:   8.2,
+    supply_score:     7,
+    demand_score:     9,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
+    key_facts:        [
+      'Highest short-let demand in Lagos outside Ikoyi/VI',
+      'Corporate relocation hub — embassy staff, oil sector',
+      'Strong capital appreciation over 5 years',
+      'Serviced apartment market very active',
+    ],
+    best_for:         ['Short-let / Airbnb', 'Corporate rental', 'Capital appreciation'],
+    risks:            ['Traffic congestion affects desirability', 'Oversupply risk in some streets', 'Variable title quality — verify thoroughly'],
+  },
+  'ikoyi': {
+    display:          'Ikoyi',
+    city:             'Lagos',
+    tier:             'Prime',
+    demand:           'Very High',
+    description:      'Lagos\'s most prestigious address. Ultra-high-net-worth enclave with limited supply and consistent demand from multinationals, senior executives, and foreign residents.',
+    median_sale_3bed: 280_000_000,
+    median_rent_3bed: 14_000_000,
+    nightly_3bed:     180_000,
+    occupancy_pct:    65,
+    price_per_sqm:    350_000,
+    dom_avg:          60,
+    yoy_change_pct:   11.4,
+    supply_score:     4,
+    demand_score:     10,
+    title_types:      ['C of O', 'Governor\'s Consent'],
+    key_facts:        [
+      'Highest price per sqm in Nigeria',
+      'Sub-markets: Old Ikoyi, Banana Island, Parkview Estate',
+      'Institutional and family office buyer base',
+      'Luxury short-let rates highest in West Africa',
+    ],
+    best_for:         ['Luxury short-let', 'Buy & hold', 'Institutional investment'],
+    risks:            ['Requires significant capital', 'Title fraud risk is real — use verified lawyers', 'Limited entry points'],
+  },
+  'victoria-island': {
+    display:          'Victoria Island',
+    city:             'Lagos',
+    tier:             'Prime',
+    demand:           'Very High',
+    description:      'Lagos\'s commercial and diplomatic hub. Mixed-use — offices, hotels, embassies, high-end residential. Business travel drives strong short-let demand.',
+    median_sale_3bed: 220_000_000,
+    median_rent_3bed: 12_000_000,
+    nightly_3bed:     150_000,
+    occupancy_pct:    62,
+    price_per_sqm:    280_000,
+    dom_avg:          55,
+    yoy_change_pct:   9.8,
+    supply_score:     5,
+    demand_score:     10,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Leasehold'],
+    key_facts:        [
+      'Business district — highest corporate rental demand',
+      'Embassy row drives consistent expat rental demand',
+      'Proximity to Eko Atlantic — appreciation catalyst',
+      'Hotel-grade short-let occupancy year-round',
+    ],
+    best_for:         ['Corporate rental', 'Short-let', 'Mixed-use investment'],
+    risks:            ['Traffic among worst in Lagos', 'Some leasehold complications', 'Noise and commercial activity'],
+  },
+  'lekki': {
+    display:          'Lekki',
+    city:             'Lagos',
+    tier:             'Premium',
+    demand:           'High',
+    description:      'Broad Lekki corridor encompassing Phase 2, Ikota, Chevron, and surrounding areas. Growing middle-to-upper class residential market with improving infrastructure.',
+    median_sale_3bed: 95_000_000,
+    median_rent_3bed: 4_800_000,
+    nightly_3bed:     85_000,
+    occupancy_pct:    58,
+    price_per_sqm:    160_000,
+    dom_avg:          80,
+    yoy_change_pct:   7.1,
+    supply_score:     8,
+    demand_score:     8,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment', 'Gazette'],
+    key_facts:        [
+      'Broadest buyer pool in Lagos — accessible to professionals',
+      'New developments continuously entering market',
+      'Lekki-Epe Expressway infrastructure driving values',
+      'Strong off-plan investment activity',
+    ],
+    best_for:         ['Buy-to-let', 'First investment property', 'Off-plan play'],
+    risks:            ['Flooding risk in some areas — verify drainage', 'Traffic on Lekki-Epe expressway', 'Over-supply risk in some sub-areas'],
+  },
+  'ikota': {
+    display:          'Ikota',
+    city:             'Lagos',
+    tier:             'Premium',
+    demand:           'High',
+    description:      'Dense, established community within the Lekki corridor. Known for Ikota Shopping Complex area. Good balance of value and accessibility.',
+    median_sale_3bed: 90_000_000,
+    median_rent_3bed: 4_500_000,
+    nightly_3bed:     80_000,
+    occupancy_pct:    55,
+    price_per_sqm:    150_000,
+    dom_avg:          85,
+    yoy_change_pct:   6.4,
+    supply_score:     7,
+    demand_score:     7,
+    title_types:      ['Governor\'s Consent', 'Deed of Assignment', 'C of O'],
+    key_facts:        [
+      'Established community — lower vacancy than newer areas',
+      'Good schools and amenities nearby',
+      'Mix of property sizes and price points',
+      'Accessible to VI and Lekki Phase 1 via expressway',
+    ],
+    best_for:         ['Buy-to-let', 'Family rental market', 'Mid-range investment'],
+    risks:            ['Some older stock needs refurbishment', 'Traffic at peak hours', 'Mixed title quality'],
+  },
+  'chevron': {
+    display:          'Chevron',
+    city:             'Lagos',
+    tier:             'Premium',
+    demand:           'High',
+    description:      'Oil and gas sector hub area. Strong corporate and expat rental demand driven by proximity to Chevron Nigeria HQ and other energy companies.',
+    median_sale_3bed: 85_000_000,
+    median_rent_3bed: 4_200_000,
+    nightly_3bed:     75_000,
+    occupancy_pct:    55,
+    price_per_sqm:    140_000,
+    dom_avg:          85,
+    yoy_change_pct:   5.8,
+    supply_score:     6,
+    demand_score:     8,
+    title_types:      ['C of O', 'Governor\'s Consent'],
+    key_facts:        [
+      'Oil sector employment base provides stable rental demand',
+      'Serviced apartment demand from expat workforce',
+      'Good estate development quality',
+      'Close to Lekki Free Trade Zone — future catalyst',
+    ],
+    best_for:         ['Corporate rental', 'Expat accommodation', 'Serviced apartments'],
+    risks:            ['Oil sector volatility affects demand', 'Limited short-let appeal vs Lekki/Ikoyi', 'Some flooding history'],
+  },
+  'ajah': {
+    display:          'Ajah',
+    city:             'Lagos',
+    tier:             'Mid',
+    demand:           'Medium',
+    description:      'Rapidly developing corridor east of Lekki. Increasingly popular with mid-income professionals seeking more space at lower price points than central Lekki.',
+    median_sale_3bed: 65_000_000,
+    median_rent_3bed: 3_200_000,
+    nightly_3bed:     60_000,
+    occupancy_pct:    50,
+    price_per_sqm:    110_000,
+    dom_avg:          100,
+    yoy_change_pct:   9.3,
+    supply_score:     8,
+    demand_score:     7,
+    title_types:      ['Deed of Assignment', 'Governor\'s Consent', 'Gazette', 'C of O'],
+    key_facts:        [
+      'Fastest price appreciation corridor in Lagos 2023-2025',
+      'Attracts buyers priced out of Lekki',
+      'Large land parcels still available for development',
+      'Sangotedo and Abraham Adesanya estate sub-markets growing fast',
+    ],
+    best_for:         ['Capital appreciation play', 'Development land', 'Affordable buy-to-let'],
+    risks:            ['Infrastructure still developing', 'Title fraud risk higher than established areas', 'Traffic and road quality'],
+  },
+  'gbagada': {
+    display:          'Gbagada',
+    city:             'Lagos',
+    tier:             'Mid',
+    demand:           'Medium',
+    description:      'Well-established mainland Lagos community. Popular with middle-class professionals. Stable rental market with lower volatility than Island properties.',
+    median_sale_3bed: 70_000_000,
+    median_rent_3bed: 3_500_000,
+    nightly_3bed:     65_000,
+    occupancy_pct:    50,
+    price_per_sqm:    120_000,
+    dom_avg:          95,
+    yoy_change_pct:   4.2,
+    supply_score:     6,
+    demand_score:     7,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
+    key_facts:        [
+      'Stable middle-class rental base',
+      'Good infrastructure vs mainland alternatives',
+      'Access to Third Mainland Bridge and Lagos Island',
+      'Phase 1 and Phase 2 have distinct price points',
+    ],
+    best_for:         ['Stable buy-to-let', 'Middle-income rental', 'Lower-risk entry'],
+    risks:            ['Lower capital appreciation than Island', 'Flooding in some areas', 'Island vs mainland preference among HNW buyers'],
+  },
+  'yaba': {
+    display:          'Yaba',
+    city:             'Lagos',
+    tier:             'Mid',
+    demand:           'Medium',
+    description:      'Lagos\'s tech and academic hub. Growing startup ecosystem, university presence, and young professional demographic creating new short-let demand.',
+    median_sale_3bed: 60_000_000,
+    median_rent_3bed: 3_000_000,
+    nightly_3bed:     55_000,
+    occupancy_pct:    50,
+    price_per_sqm:    100_000,
+    dom_avg:          100,
+    yoy_change_pct:   6.8,
+    supply_score:     6,
+    demand_score:     6,
+    title_types:      ['C of O', 'Deed of Assignment'],
+    key_facts:        [
+      'Tech hub — co-living and serviced apartment demand growing',
+      'University of Lagos proximity drives student rental market',
+      'Startup and SME office conversions increasing',
+      'Gentrification underway — early appreciation signals',
+    ],
+    best_for:         ['Co-living / serviced apartments', 'Student accommodation', 'Long-term appreciation'],
+    risks:            ['Older building stock in many areas', 'Mixed neighborhood quality', 'Infrastructure gaps'],
+  },
+  'ikeja': {
+    display:          'Ikeja',
+    city:             'Lagos',
+    tier:             'Mid',
+    demand:           'Medium',
+    description:      'Lagos State capital and commercial centre. Government, aviation, and business hub. Stable rental market with consistent corporate demand.',
+    median_sale_3bed: 75_000_000,
+    median_rent_3bed: 3_800_000,
+    nightly_3bed:     70_000,
+    occupancy_pct:    52,
+    price_per_sqm:    130_000,
+    dom_avg:          90,
+    yoy_change_pct:   5.1,
+    supply_score:     7,
+    demand_score:     7,
+    title_types:      ['C of O', 'Governor\'s Consent', 'Deed of Assignment'],
+    key_facts:        [
+      'Airport proximity drives short-let and corporate demand',
+      'GRA sub-market significantly higher quality',
+      'Government and civil service stable rental base',
+      'Alausa government area proximity',
+    ],
+    best_for:         ['Corporate rental', 'Airport proximity short-let', 'Government tenant base'],
+    risks:            ['Wide quality variation across sub-areas', 'GRA vs non-GRA price gap significant', 'Some infrastructure aging'],
+  },
+}
+
+// ─── Computation Engine (inline — works without API) ──────────────────────
+
+const MORTGAGE_RATE = 0.22
+const MORTGAGE_YEARS = 15
+const DOWN_PCT = 0.30
+const OPEX = 0.25
+const PLATFORM_FEE = 0.20
+const SHORTLET_OPEX = 0.35
+const MEDIAN_INCOME = 180_000
+
+function computeMetrics(nd: typeof NEIGHBORHOOD_DATA[string], bedrooms: number, price: number) {
+  // Scale benchmarks to bedrooms
+  const bedroomScale = bedrooms <= 1 ? 0.45 : bedrooms === 2 ? 0.72 : bedrooms === 3 ? 1.0 : bedrooms === 4 ? 1.35 : 1.65
+  const annualRent   = nd.median_rent_3bed * bedroomScale
+  const nightly      = nd.nightly_3bed * bedroomScale
+  const occupancy    = nd.occupancy_pct / 100
+
+  // Traditional yield
+  const tradGross = (annualRent / price) * 100
+  const tradNet   = ((annualRent * (1 - OPEX)) / price) * 100
+  const noi       = annualRent * (1 - OPEX)
+
+  // Short-let yield
+  const slGrossAnnual = nightly * occupancy * 365
+  const slNet         = slGrossAnnual * (1 - PLATFORM_FEE) * (1 - SHORTLET_OPEX)
+  const slGrossPct    = (slGrossAnnual / price) * 100
+  const slNetPct      = (slNet / price) * 100
+
+  // Cap rate
+  const capRate = (noi / price) * 100
+
+  // Cash on cash
+  const r       = MORTGAGE_RATE / 12
+  const n       = MORTGAGE_YEARS * 12
+  const loan    = price * (1 - DOWN_PCT)
+  const down    = price * DOWN_PCT
+  const monthly = loan * (r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
+  const annualCF = annualRent - (annualRent * OPEX) - (monthly * 12)
+  const coc     = (annualCF / down) * 100
+
+  // Affordability
+  const incomeMultiple = (monthly / 0.30) / MEDIAN_INCOME
+  const accessible = incomeMultiple >= 20 ? 'Top 1%' : incomeMultiple >= 10 ? 'Top 5%' : incomeMultiple >= 5 ? 'Top 10%' : 'Top 20%'
+
+  // Strategy
+  let strategy = 'buy_to_let', strategyLabel = 'Buy to Let', reason = `Traditional yield of ${tradNet.toFixed(1)}% net is reasonable for Lagos`
+  if (slNetPct > tradNet + 2) {
+    strategy = 'short_let'; strategyLabel = 'Short-let / Airbnb'
+    reason = `Short-let yields ${slNetPct.toFixed(1)}% net vs ${tradNet.toFixed(1)}% traditional — ${(slNetPct - tradNet).toFixed(1)}pp premium`
+  } else if (nd.yoy_change_pct > 8 && tradNet < 5) {
+    strategy = 'buy_hold'; strategyLabel = 'Buy & Hold'
+    reason = `${nd.yoy_change_pct}% annual appreciation makes capital gain the primary return`
+  } else if (tradNet < 3) {
+    strategy = 'review'; strategyLabel = 'Negotiate Hard'
+    reason = `Yields are thin at median price — push for 15-20% below asking`
+  }
+
+  return { tradGross, tradNet, noi, slGrossPct, slNetPct, slGrossAnnual, slNet, capRate, coc, annualCF, monthly, down, accessible, incomeMultiple, strategy, strategyLabel, reason, annualRent, nightly }
+}
+
+// ─── Formatter ────────────────────────────────────────────────────────────
+
+function fmtN(n: number) {
+  if (n >= 1_000_000_000) return `₦${(n / 1_000_000_000).toFixed(1)}B`
+  if (n >= 1_000_000)     return `₦${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)         return `₦${(n / 1_000).toFixed(0)}K`
+  return `₦${n.toFixed(0)}`
+}
+
+// ─── Component ────────────────────────────────────────────────────────────
+
+export default function NeighborhoodPage() {
+  const params       = useParams()
+  const searchParams = useSearchParams()
+  const slug         = (params?.slug as string) || ''
+  const q            = searchParams?.get('q') || ''
+
+  const [dark,      setDark]      = useState(true)
+  const [bedrooms,  setBedrooms]  = useState(3)
+
+  // Sync dark mode from NavBar
+  useEffect(() => {
+    // Import inline to avoid SSR issues
+    const { getInitialDark, listenTheme } = require('../../../lib/theme')
+    setDark(getInitialDark())
+    return listenTheme((d: boolean) => setDark(d))
+  }, [])
+  const [price,     setPrice]     = useState(0)
+  const [priceInput,setPriceInput]= useState('')
+
+  const nd = NEIGHBORHOOD_DATA[slug]
+
+  useEffect(() => {
+    if (nd) setPrice(nd.median_sale_3bed)
+  }, [slug, nd])
+
+  const metrics = nd && price > 0 ? computeMetrics(nd, bedrooms, price) : null
+
+  const css = {
+    '--bg':      dark ? '#0F172A' : '#F8FAFC',
+    '--bg2':     dark ? '#1E293B' : '#F1F5F9',
+    '--bg3':     dark ? '#273549' : '#E2E8F0',
+    '--text':    dark ? '#F8FAFC' : '#0F172A',
+    '--text2':   dark ? 'rgba(248,250,252,0.65)' : 'rgba(15,23,42,0.65)',
+    '--text3':   dark ? 'rgba(248,250,252,0.35)' : 'rgba(15,23,42,0.35)',
+    '--purple':  '#5B2EFF',
+    '--purpleL': '#7C5FFF',
+    '--teal':    dark ? '#14B8A6' : '#0D9488',
+    '--tealL':   '#2DD4BF',
+    '--border':  'rgba(91,46,255,0.18)',
+    '--borderL': dark ? 'rgba(248,250,252,0.07)' : 'rgba(15,23,42,0.08)',
+    '--card':    dark ? '#162032' : '#FFFFFF',
+    '--green':   '#22C55E',
+    '--red':     '#EF4444',
+    '--amber':   '#F59E0B',
+  } as React.CSSProperties
+
+  const card = {
+    background: 'var(--card)',
+    border: '1px solid var(--borderL)',
+    borderRadius: 16,
+    padding: '1.5rem',
+    marginBottom: '1rem',
+  }
+
+  const label = {
+    fontSize: '0.68rem', fontWeight: 700,
+    color: 'var(--teal)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.12em',
+    marginBottom: '0.35rem',
+    display: 'block',
+  }
+
+  const bigNum = (val: string, color?: string) => ({
+    fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
+    fontWeight: 800, letterSpacing: '-0.04em',
+    color: color || 'var(--text)',
+    lineHeight: 1,
+  })
+
+  const subText = {
+    fontSize: '0.72rem',
+    color: 'var(--text3)',
+    fontFamily: 'var(--font-mono)' as const,
+    marginTop: '0.25rem',
+  }
+
+  // Not found state
+  if (!nd) return (
+    <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center' }}>
+      <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⌕</div>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.5rem' }}>
+        "{q || slug}" not yet covered
+      </h1>
+      <p style={{ color: 'var(--text2)', marginBottom: '1.5rem', maxWidth: 380, lineHeight: 1.6 }}>
+        We're mapping Lagos neighborhood by neighborhood. This area is on our list.
+      </p>
+      <Link href="/" style={{ background: 'var(--purple)', color: '#fff', padding: '0.75rem 1.5rem', borderRadius: 10, textDecoration: 'none', fontWeight: 600, fontSize: '0.875rem' }}>
+        Search another area →
+      </Link>
+    </div>
+  )
+
+  const demandColor = nd.demand === 'Very High' ? 'var(--green)' : nd.demand === 'High' ? 'var(--teal)' : 'var(--amber)'
+
+  return (
+    <div style={{ ...css, background: 'var(--bg)', minHeight: '100vh', transition: 'all 0.3s' }}>
+
+      {/* ── NAV ── */}
+      <nav style={{
+        position: 'sticky', top: 0, zIndex: 100,
+        background: dark ? 'rgba(15,23,42,0.92)' : 'rgba(248,250,252,0.92)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid var(--borderL)',
+        padding: '0 2rem',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        height: 64,
+      }}>
+        <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--purple)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: 800, color: '#fff' }}>Z</div>
+          <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text)' }}>Zalone</span>
+        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <Link href="/" style={{ fontSize: '0.82rem', color: 'var(--text2)', textDecoration: 'none' }}>← New Search</Link>
+          <button onClick={() => setDark(!dark)} style={{ width: 40, height: 24, borderRadius: 100, background: dark ? 'var(--purple)' : '#CBD5E1', border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.25s' }}>
+            <div style={{ position: 'absolute', top: 3, left: dark ? 19 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.25s', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem' }}>
+              {dark ? '☀' : '☾'}
+            </div>
+          </button>
+        </div>
+      </nav>
+
+      {/* ── HERO ── */}
+      <section style={{
+        background: dark ? 'var(--bg2)' : 'var(--bg2)',
+        borderBottom: '1px solid var(--borderL)',
+        padding: '2.5rem 2rem',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', top: -100, right: '10%', width: 350, height: 350, borderRadius: '50%', background: 'radial-gradient(circle, rgba(91,46,255,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+        <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text3)', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)', letterSpacing: '0.06em' }}>
+            Lagos · {nd.tier} Area
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h1 style={{ fontSize: 'clamp(1.8rem, 4vw, 3rem)', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.04em', lineHeight: 1.05, marginBottom: '0.5rem' }}>
+                {nd.display}
+              </h1>
+              <p style={{ fontSize: '0.925rem', color: 'var(--text2)', maxWidth: 560, lineHeight: 1.65, fontWeight: 300 }}>
+                {nd.description}
+              </p>
+            </div>
+
+            {/* Key badges */}
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <div style={{ background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.08)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>Demand</div>
+                <div style={{ fontWeight: 800, color: demandColor, fontSize: '1rem' }}>{nd.demand}</div>
+              </div>
+              <div style={{ background: dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)', border: '1px solid rgba(91,46,255,0.2)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>YoY Price</div>
+                <div style={{ fontWeight: 800, color: 'var(--purpleL)', fontSize: '1rem' }}>+{nd.yoy_change_pct}%</div>
+              </div>
+              <div style={{ background: dark ? 'rgba(248,250,252,0.05)' : 'rgba(15,23,42,0.04)', border: '1px solid var(--borderL)', borderRadius: 10, padding: '0.875rem 1.25rem', textAlign: 'center', minWidth: 110 }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.25rem' }}>Avg DOM</div>
+                <div style={{ fontWeight: 800, color: 'var(--text)', fontSize: '1rem' }}>{nd.dom_avg}d</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── BODY ── */}
+      <div style={{ maxWidth: 1100, margin: '0 auto', padding: '2.5rem 2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: '2rem' }}>
+
+          {/* ── LEFT ── */}
+          <div>
+
+            {/* Scenario inputs */}
+            <div style={{ ...card, background: dark ? 'rgba(91,46,255,0.06)' : 'rgba(91,46,255,0.04)', borderColor: 'rgba(91,46,255,0.2)', marginBottom: '1.5rem' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
+                ◈ Run Your Scenario
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <span style={label}>Property Price (₦)</span>
+                  <input
+                    type="text"
+                    value={priceInput || (price > 0 ? (price / 1_000_000).toFixed(0) + 'M' : '')}
+                    onChange={e => {
+                      setPriceInput(e.target.value)
+                      const num = parseFloat(e.target.value.replace(/[^0-9.]/g, ''))
+                      if (!isNaN(num)) {
+                        // Detect if they typed in millions or full
+                        const val = num > 10000 ? num : num * 1_000_000
+                        setPrice(val)
+                      }
+                    }}
+                    placeholder={`e.g. ${(nd.median_sale_3bed / 1_000_000).toFixed(0)}M`}
+                    style={{
+                      width: '100%', padding: '0.65rem 0.875rem',
+                      background: dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+                      border: '1px solid var(--borderL)',
+                      borderRadius: 8, color: 'var(--text)',
+                      fontSize: '0.9rem', outline: 'none',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  />
+                  <div style={{ ...subText, marginTop: '0.3rem' }}>Type 120M, 85000000, etc.</div>
+                </div>
+                <div>
+                  <span style={label}>Bedrooms</span>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {[1, 2, 3, 4, 5].map(b => (
+                      <button key={b} onClick={() => setBedrooms(b)} style={{
+                        flex: 1, padding: '0.65rem 0',
+                        background: bedrooms === b ? 'var(--purple)' : 'transparent',
+                        color: bedrooms === b ? '#fff' : 'var(--text2)',
+                        border: `1px solid ${bedrooms === b ? 'var(--purple)' : 'var(--borderL)'}`,
+                        borderRadius: 8, cursor: 'pointer',
+                        fontSize: '0.85rem', fontWeight: 600,
+                        transition: 'all 0.15s',
+                      }}>{b}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div style={{ marginTop: '0.875rem', fontSize: '0.75rem', color: 'var(--text3)', lineHeight: 1.5 }}>
+                Metrics recalculate instantly. Rent and short-let rates estimated from verified {nd.display} benchmarks.
+                <span style={{ color: 'var(--teal)', marginLeft: '0.3rem' }}>You can override with your own figures.</span>
+              </div>
+            </div>
+
+            {/* Metrics grid */}
+            {metrics && (
+              <>
+                {/* Yield row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  {/* Traditional */}
+                  <div style={card}>
+                    <span style={label}>Traditional Yield</span>
+                    <div style={bigNum(metrics.tradGross.toFixed(1) + '%', metrics.tradGross >= 7 ? 'var(--green)' : metrics.tradGross >= 5 ? 'var(--amber)' : 'var(--red)')}>
+                      {metrics.tradGross.toFixed(2)}%
+                    </div>
+                    <div style={subText}>Net: {metrics.tradNet.toFixed(2)}%</div>
+                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
+                      Est. rent: {fmtN(metrics.annualRent)}/yr
+                    </div>
+                  </div>
+
+                  {/* Short-let */}
+                  <div style={card}>
+                    <span style={label}>Short-let / Airbnb Yield</span>
+                    <div style={bigNum(metrics.slGrossPct.toFixed(1) + '%', metrics.slGrossPct >= 15 ? 'var(--green)' : metrics.slGrossPct >= 10 ? 'var(--amber)' : 'var(--text)')}>
+                      {metrics.slGrossPct.toFixed(2)}%
+                    </div>
+                    <div style={subText}>Net: {metrics.slNetPct.toFixed(2)}%</div>
+                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
+                      {fmtN(metrics.nightly)}/night · {nd.occupancy_pct}% occ.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cap rate + CoC */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                  <div style={card}>
+                    <span style={label}>Cap Rate</span>
+                    <div style={bigNum(metrics.capRate.toFixed(2) + '%')}>
+                      {metrics.capRate.toFixed(2)}%
+                    </div>
+                    <div style={subText}>NOI: {fmtN(metrics.noi)}/yr</div>
+                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
+                      After {(OPEX * 100).toFixed(0)}% operating expenses
+                    </div>
+                  </div>
+
+                  <div style={card}>
+                    <span style={label}>Cash-on-Cash Return</span>
+                    <div style={bigNum((metrics.coc > 0 ? '+' : '') + metrics.coc.toFixed(1) + '%', metrics.coc > 0 ? 'var(--green)' : 'var(--red)')}>
+                      {metrics.coc > 0 ? '+' : ''}{metrics.coc.toFixed(2)}%
+                    </div>
+                    <div style={subText}>
+                      {metrics.coc < 0 ? 'Negative — Nigerian mortgage rates (22%) make leveraged buy challenging' : 'Positive cashflow after mortgage'}
+                    </div>
+                    <div style={{ ...subText, marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--borderL)' }}>
+                      Monthly mortgage: {fmtN(metrics.monthly)} · 30% down
+                    </div>
+                  </div>
+                </div>
+
+                {/* Market benchmarks */}
+                <div style={card}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
+                    Market Benchmarks · {nd.display}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                    {[
+                      { label: 'Median 3-Bed Sale', value: fmtN(nd.median_sale_3bed) },
+                      { label: 'Median Annual Rent', value: fmtN(nd.median_rent_3bed) },
+                      { label: 'Price / sqm', value: fmtN(nd.price_per_sqm) },
+                      { label: 'STR Nightly (3-Bed)', value: fmtN(nd.nightly_3bed) },
+                      { label: 'STR Occupancy', value: `${nd.occupancy_pct}%` },
+                      { label: 'YoY Appreciation', value: `+${nd.yoy_change_pct}%` },
+                    ].map(m => (
+                      <div key={m.label} style={{ padding: '0.875rem', background: dark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderRadius: 10 }}>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.35rem' }}>{m.label}</div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>{m.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Supply/Demand */}
+                <div style={card}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1.25rem' }}>
+                    Supply / Demand Signals
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                    {[
+                      { label: 'Supply (Inventory)', score: nd.supply_score, invert: true },
+                      { label: 'Buyer Demand', score: nd.demand_score, invert: false },
+                    ].map(s => (
+                      <div key={s.label}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text2)', fontWeight: 500 }}>{s.label}</span>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{s.score}/10</span>
+                        </div>
+                        <div style={{ height: 6, background: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', borderRadius: 100, overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%', width: `${s.score * 10}%`,
+                            background: s.invert
+                              ? s.score > 7 ? 'var(--amber)' : 'var(--green)'
+                              : s.score > 7 ? 'var(--green)' : 'var(--amber)',
+                            borderRadius: 100,
+                            transition: 'width 0.6s ease',
+                          }} />
+                        </div>
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text3)', marginTop: '0.3rem' }}>
+                          {s.invert ? (s.score > 7 ? 'High inventory — more negotiation room' : 'Low inventory — competitive') : (s.score > 7 ? 'Strong demand — faster sales' : 'Moderate demand')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </>
+            )}
+
+            {/* Key facts */}
+            <div style={card}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1rem' }}>
+                Market Intelligence
+              </div>
+              {nd.key_facts.map((f, i) => (
+                <div key={i} style={{ display: 'flex', gap: '0.75rem', padding: '0.6rem 0', borderBottom: i < nd.key_facts.length - 1 ? '1px solid var(--borderL)' : 'none' }}>
+                  <span style={{ color: 'var(--teal)', fontSize: '0.7rem', flexShrink: 0, marginTop: 3 }}>◆</span>
+                  <span style={{ fontSize: '0.875rem', color: 'var(--text2)', lineHeight: 1.5 }}>{f}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Title types */}
+            <div style={card}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '1rem' }}>
+                Common Title Types
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                {nd.title_types.map(t => (
+                  <span key={t} style={{
+                    padding: '0.3rem 0.75rem',
+                    background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.08)',
+                    border: '1px solid rgba(20,184,166,0.25)',
+                    borderRadius: 100, fontSize: '0.75rem',
+                    color: 'var(--teal)', fontWeight: 600,
+                  }}>
+                    ✓ {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── RIGHT COLUMN ── */}
+          <div>
+
+            {/* Strategy signal */}
+            {metrics && (
+              <div style={{
+                background: dark ? 'linear-gradient(135deg, rgba(91,46,255,0.15) 0%, rgba(20,184,166,0.08) 100%)' : 'linear-gradient(135deg, rgba(91,46,255,0.06) 0%, rgba(20,184,166,0.04) 100%)',
+                border: '1px solid rgba(91,46,255,0.25)',
+                borderRadius: 16, padding: '1.5rem',
+                marginBottom: '1rem',
+              }}>
+                <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--teal)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--teal)', display: 'inline-block' }} />
+                  Zalone Strategy Signal
+                </div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text)', marginBottom: '0.4rem', letterSpacing: '-0.02em' }}>
+                  {metrics.strategyLabel}
+                </div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text2)', lineHeight: 1.55 }}>
+                  {metrics.reason}
+                </div>
+              </div>
+            )}
+
+            {/* Affordability */}
+            {metrics && (
+              <div style={card}>
+                <span style={label}>Buyer Profile</span>
+                <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text)', marginBottom: '0.25rem' }}>
+                  {metrics.accessible} of Lagos earners
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text2)', lineHeight: 1.5, marginBottom: '0.875rem' }}>
+                  Requires ~{fmtN(metrics.monthly / 0.30)}/month income at 30% housing ratio
+                </div>
+                <div style={{ padding: '0.75rem', background: dark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 10, fontSize: '0.78rem', color: 'var(--text3)', lineHeight: 1.5 }}>
+                  {metrics.incomeMultiple >= 10
+                    ? 'Target: Diaspora buyers, HNW individuals, institutional investors'
+                    : metrics.incomeMultiple >= 5
+                    ? 'Target: Senior professionals, dual-income households, SME owners'
+                    : 'Target: Mid-senior professionals, young executives'}
+                </div>
+              </div>
+            )}
+
+            {/* Best for / Risks */}
+            <div style={card}>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <span style={label}>Best For</span>
+                {nd.best_for.map((b, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '0.5rem', padding: '0.4rem 0', alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--green)', fontSize: '0.75rem', marginTop: 2, flexShrink: 0 }}>✓</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>{b}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ borderTop: '1px solid var(--borderL)', paddingTop: '1.25rem' }}>
+                <span style={{ ...label, color: 'var(--red)' }}>Risk Factors</span>
+                {nd.risks.map((r, i) => (
+                  <div key={i} style={{ display: 'flex', gap: '0.5rem', padding: '0.4rem 0', alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--amber)', fontSize: '0.75rem', marginTop: 2, flexShrink: 0 }}>⚠</span>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text2)' }}>{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Data note */}
+            <div style={{ padding: '1rem', background: dark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)', border: '1px solid var(--borderL)', borderRadius: 12, fontSize: '0.72rem', color: 'var(--text3)', fontFamily: 'var(--font-mono)', lineHeight: 1.6 }}>
+              Benchmarks from verified Lagos market research. Metrics computed from your scenario inputs. Always conduct independent due diligence. Data: Manop Intelligence.
+            </div>
+
+            {/* Properties in this area */}
+            <div style={{ marginTop: '2rem' }}>
+              <PropertySection neighborhood={slug} dark={dark} />
+            </div>
+
+            {/* Agency CTA */}
+            <div style={{ marginTop: '1rem', background: dark ? 'rgba(91,46,255,0.08)' : 'rgba(91,46,255,0.04)', border: '1px solid rgba(91,46,255,0.2)', borderRadius: 16, padding: '1.25rem', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--purpleL)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.5rem' }}>
+                Agency in {nd.display}?
+              </div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text2)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                Get free intelligence reports on your listings. Investors see your properties with verified data.
+              </div>
+              <a href="mailto:partners@manop.africa" style={{ display: 'block', background: 'var(--purple)', color: '#fff', padding: '0.65rem 1rem', borderRadius: 10, textDecoration: 'none', fontWeight: 600, fontSize: '0.82rem' }}>
+                Become a Founding Partner →
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <style>{`
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        a { color: inherit; }
+        input { transition: border-color 0.15s; }
+        input:focus { border-color: var(--purple) !important; outline: none; }
+        @media (max-width: 768px) {
+          div[style*="grid-template-columns: 1fr 380px"] {
+            display: block !important;
+          }
+          div[style*="grid-template-columns: repeat(3, 1fr)"] {
+            grid-template-columns: repeat(2, 1fr) !important;
+          }
+        }
+      `}</style>
+    </div>
+  )
+}
+</file>
+
+<file path="app/page.tsx">
+'use client'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { getInitialDark, listenTheme } from '../lib/theme'
+
+// ─── Global Markets — honest about where we have data ─────────────────────
+const LIVE_MARKETS = [
+  { name: 'Lekki Phase 1', city: 'Lagos', country: 'Nigeria', flag: '🇳🇬', slug: 'lekki-phase-1', live: true },
+  { name: 'Ikoyi',         city: 'Lagos', country: 'Nigeria', flag: '🇳🇬', slug: 'ikoyi',         live: true },
+  { name: 'Victoria Island',city: 'Lagos', country: 'Nigeria', flag: '🇳🇬', slug: 'victoria-island',live: true },
+  { name: 'Lekki',         city: 'Lagos', country: 'Nigeria', flag: '🇳🇬', slug: 'lekki',         live: true },
+  { name: 'Ikota',         city: 'Lagos', country: 'Nigeria', flag: '🇳🇬', slug: 'ikota',         live: true },
+  { name: 'Chevron',       city: 'Lagos', country: 'Nigeria', flag: '🇳🇬', slug: 'chevron',       live: true },
+  { name: 'Ajah',          city: 'Lagos', country: 'Nigeria', flag: '🇳🇬', slug: 'ajah',          live: true },
+  { name: 'Abuja',         city: 'Abuja', country: 'Nigeria', flag: '🇳🇬', slug: 'abuja',         live: false },
+  { name: 'East Legon',    city: 'Accra', country: 'Ghana',   flag: '🇬🇭', slug: 'east-legon',    live: false },
+  { name: 'Westlands',     city: 'Nairobi',country: 'Kenya',  flag: '🇰🇪', slug: 'westlands',     live: false },
+  { name: 'Karen',         city: 'Nairobi',country: 'Kenya',  flag: '🇰🇪', slug: 'karen',         live: false },
+  { name: 'Cantonments',   city: 'Accra', country: 'Ghana',   flag: '🇬🇭', slug: 'cantonments',   live: false },
+]
+
+const QUICK_SEARCH = [
+  'Lekki Phase 1, Lagos',
+  'Ikoyi, Lagos',
+  'East Legon, Accra',
+  'Westlands, Nairobi',
+  'Victoria Island, Lagos',
+]
+
+const INTELLIGENCE_METRICS = [
+  { icon: '◈', label: 'Traditional Yield',   desc: 'Gross & net rental return on asking price' },
+  { icon: '◉', label: 'Short-let Yield',      desc: 'Airbnb/short-let return with local occupancy' },
+  { icon: '⬡', label: 'Cap Rate & NOI',       desc: 'Net operating income after all expenses' },
+  { icon: '◇', label: 'Cash-on-Cash',         desc: 'Return on equity after local mortgage costs' },
+  { icon: '△', label: 'Price vs Market',      desc: 'How this property sits against area median' },
+  { icon: '○', label: 'Strategy Signal',      desc: 'Data-driven: buy-to-let, short-let, or hold' },
+]
+
+// Global slug resolver — maps any search to a neighborhood slug
+function resolveSlug(query: string): { slug: string; found: boolean } {
+  const q = query.toLowerCase().trim()
+  const map: Record<string, string> = {
+    'lekki phase 1': 'lekki-phase-1', 'lekki phase one': 'lekki-phase-1',
+    'lekki ph 1': 'lekki-phase-1', 'lekki ph1': 'lekki-phase-1',
+    'ikoyi': 'ikoyi', 'victoria island': 'victoria-island', 'v.i': 'victoria-island', 'vi': 'victoria-island',
+    'lekki': 'lekki', 'ikota': 'ikota', 'chevron': 'chevron', 'ajah': 'ajah',
+    'gbagada': 'gbagada', 'yaba': 'yaba', 'ikeja': 'ikeja', 'surulere': 'surulere', 'magodo': 'magodo',
+    'abuja': 'abuja', 'maitama': 'maitama', 'asokoro': 'asokoro', 'wuse': 'wuse', 'wuse 2': 'wuse-2',
+    'east legon': 'east-legon', 'cantonments': 'cantonments', 'labone': 'labone',
+    'airport residential': 'airport-residential', 'accra': 'accra', 'spintex': 'spintex',
+    'westlands': 'westlands', 'karen': 'karen', 'kilimani': 'kilimani', 'lavington': 'lavington', 'nairobi': 'nairobi',
+  }
+  for (const [key, slug] of Object.entries(map)) {
+    if (q.includes(key)) return { slug, found: true }
+  }
+  const fallback = q.replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+  return { slug: fallback, found: false }
+}
+
+export default function Home() {
+  const [dark,    setDark]    = useState(true)
+  const [query,   setQuery]   = useState('')
+  const [focused, setFocused] = useState(false)
+  const [suggest, setSuggest] = useState<string[]>([])
+  const [ph,      setPh]      = useState('Search any city or neighborhood...')
+  const router = useRouter()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Sync dark mode from NavBar
+  useEffect(() => {
+    setDark(getInitialDark())
+    return listenTheme(d => setDark(d))
+  }, [])
+
+  // Animated placeholder
+  useEffect(() => {
+    const examples = ['Lekki Phase 1, Lagos', 'East Legon, Accra', 'Westlands, Nairobi', 'Ikoyi, Lagos', 'Karen, Nairobi', 'Victoria Island, Lagos']
+    let i = 0, ci = 0, dir = 1, paused = false
+    const tick = () => {
+      const word = 'Search ' + examples[i] + '...'
+      if (paused) { paused = false; return }
+      if (dir === 1) {
+        setPh(word.slice(0, ci + 1))
+        ci++
+        if (ci >= word.length) { dir = -1; paused = true }
+      } else {
+        setPh(word.slice(0, ci - 1))
+        ci--
+        if (ci <= 7) { dir = 1; i = (i + 1) % examples.length }
+      }
+    }
+    const id = setInterval(tick, 70)
+    return () => clearInterval(id)
+  }, [])
+
+  const handleInput = (val: string) => {
+    setQuery(val)
+    if (val.length > 1) {
+      const v = val.toLowerCase()
+      setSuggest(LIVE_MARKETS.filter(m =>
+        m.name.toLowerCase().includes(v) ||
+        m.city.toLowerCase().includes(v) ||
+        m.country.toLowerCase().includes(v)
+      ).slice(0, 6).map(m => `${m.name}, ${m.city}, ${m.country}`))
+    } else {
+      setSuggest([])
+    }
+  }
+
+  const go = (val?: string) => {
+    const q = val || query
+    if (!q.trim()) return
+    const { slug } = resolveSlug(q)
+    router.push(`/neighborhood/${slug}?q=${encodeURIComponent(q)}`)
+  }
+
+  // CSS vars based on dark state
+  const v = (dk: string, lt: string) => dark ? dk : lt
+  const bg      = v('#0F172A', '#F8FAFC')
+  const bg2     = v('#1E293B', '#F1F5F9')
+  const bg3     = v('#162032', '#FFFFFF')
+  const text     = v('#F8FAFC', '#0F172A')
+  const text2    = v('rgba(248,250,252,0.65)', 'rgba(15,23,42,0.65)')
+  const text3    = v('rgba(248,250,252,0.35)', 'rgba(15,23,42,0.35)')
+  const border   = v('rgba(248,250,252,0.07)', 'rgba(15,23,42,0.08)')
+  const borderP  = 'rgba(91,46,255,0.2)'
+
+  return (
+    <div style={{ background: bg, minHeight: '100vh', color: text, transition: 'background 0.3s, color 0.3s' }}>
+
+      {/* ── HERO ── */}
+      <section style={{ position: 'relative', overflow: 'hidden', padding: 'clamp(5rem,11vw,9rem) 2rem clamp(4rem,8vw,7rem)' }}>
+        {/* Glows */}
+        <div style={{ position: 'absolute', top: -200, left: '25%', width: 700, height: 700, borderRadius: '50%', background: dark ? 'radial-gradient(circle, rgba(91,46,255,0.16) 0%, transparent 70%)' : 'radial-gradient(circle, rgba(91,46,255,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -200, right: '5%', width: 500, height: 500, borderRadius: '50%', background: dark ? 'radial-gradient(circle, rgba(20,184,166,0.1) 0%, transparent 70%)' : 'radial-gradient(circle, rgba(20,184,166,0.04) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+        <div style={{ maxWidth: 760, margin: '0 auto', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+          {/* Global pill */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', background: dark ? 'rgba(20,184,166,0.1)' : 'rgba(20,184,166,0.07)', border: '1px solid rgba(20,184,166,0.25)', borderRadius: 100, padding: '0.3rem 0.875rem', fontSize: '0.72rem', fontWeight: 600, color: '#14B8A6', letterSpacing: '0.04em', marginBottom: '2rem' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#14B8A6', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+            Nigeria · Ghana · Kenya · South Africa · and beyond
+          </div>
+
+          {/* Headline */}
+          <h1 style={{ fontSize: 'clamp(2.4rem,6vw,4.8rem)', fontWeight: 800, lineHeight: 1.02, letterSpacing: '-0.05em', color: text, marginBottom: '1.25rem' }}>
+            Invest in African real estate{' '}
+            <span style={{ background: 'linear-gradient(135deg,#5B2EFF 0%,#14B8A6 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              with real data.
+            </span>
+          </h1>
+
+          <p style={{ fontSize: 'clamp(1rem,2vw,1.15rem)', color: text2, lineHeight: 1.7, maxWidth: 520, margin: '0 auto 2.5rem', fontWeight: 300 }}>
+            Search any city or neighborhood across Africa to see verified yield analysis,
+            cap rates, and market benchmarks — before you invest.
+          </p>
+
+          {/* ── SEARCH BAR ── */}
+          <div style={{ position: 'relative', maxWidth: 600, margin: '0 auto' }}>
+            <div style={{
+              display: 'flex',
+              background: bg3,
+              border: `1.5px solid ${focused ? '#5B2EFF' : border}`,
+              borderRadius: 14,
+              boxShadow: focused ? '0 0 0 4px rgba(91,46,255,0.12), 0 8px 32px rgba(0,0,0,0.12)' : dark ? '0 4px 24px rgba(0,0,0,0.2)' : '0 4px 24px rgba(0,0,0,0.07)',
+              transition: 'all 0.2s',
+              overflow: 'visible',
+            }}>
+              <div style={{ padding: '0 0.875rem 0 1.25rem', display: 'flex', alignItems: 'center', color: focused ? '#5B2EFF' : text3, fontSize: '1.1rem', flexShrink: 0, transition: 'color 0.2s' }}>
+                ⌕
+              </div>
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={e => handleInput(e.target.value)}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setTimeout(() => { setFocused(false); setSuggest([]) }, 150)}
+                onKeyDown={e => e.key === 'Enter' && go()}
+                placeholder={ph}
+                style={{ flex: 1, padding: '1rem 0.5rem', background: 'transparent', border: 'none', outline: 'none', fontSize: '0.95rem', color: text, minWidth: 0 }}
+              />
+              <button onClick={() => go()} style={{ background: '#5B2EFF', color: '#fff', border: 'none', padding: '0 1.5rem', fontSize: '0.875rem', fontWeight: 600, cursor: 'pointer', borderRadius: '0 12px 12px 0', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#7C5FFF')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#5B2EFF')}
+              >
+                Analyze →
+              </button>
+            </div>
+
+            {/* Suggestions */}
+            {suggest.length > 0 && (
+              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 50, background: bg3, border: `1px solid ${border}`, borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,0.15)', overflow: 'hidden' }}>
+                {suggest.map(s => (
+                  <button key={s} onMouseDown={() => { setQuery(s); setSuggest([]); go(s) }} style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', width: '100%', padding: '0.75rem 1.25rem', background: 'transparent', border: 'none', borderBottom: `1px solid ${border}`, textAlign: 'left', cursor: 'pointer', color: text, fontSize: '0.875rem', transition: 'background 0.1s' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = dark ? 'rgba(91,46,255,0.08)' : '#F1F5F9')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span style={{ color: '#14B8A6', fontSize: '0.8rem' }}>📍</span>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Quick search chips */}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '1.25rem' }}>
+            <span style={{ fontSize: '0.72rem', color: text3, alignSelf: 'center', marginRight: '0.1rem' }}>Try:</span>
+            {QUICK_SEARCH.map(q => (
+              <button key={q} onClick={() => { setQuery(q); go(q) }} style={{ padding: '0.28rem 0.75rem', background: dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)', border: '1px solid rgba(91,46,255,0.2)', borderRadius: 100, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500, color: '#7C5FFF', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(91,46,255,0.2)'; e.currentTarget.style.color = '#fff' }}
+                onMouseLeave={e => { e.currentTarget.style.background = dark ? 'rgba(91,46,255,0.1)' : 'rgba(91,46,255,0.06)'; e.currentTarget.style.color = '#7C5FFF' }}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── STATS BAR ── */}
+      <div style={{ borderTop: `1px solid ${border}`, borderBottom: `1px solid ${border}`, background: dark ? 'rgba(30,41,59,0.5)' : bg2 }}>
+        <div style={{ maxWidth: 900, margin: '0 auto', padding: '1.5rem 2rem', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 0 }}>
+          {[
+            { val: '4',       label: 'Countries' },
+            { val: '7+',      label: 'Live Markets' },
+            { val: '6',       label: 'Intel Metrics' },
+            { val: 'Global',  label: 'Investor Access' },
+          ].map((s, i) => (
+            <div key={s.label} style={{ textAlign: 'center', borderRight: i < 3 ? `1px solid ${border}` : 'none', padding: '0 1rem' }}>
+              <div style={{ fontSize: 'clamp(1.3rem,2.5vw,1.8rem)', fontWeight: 800, color: text, letterSpacing: '-0.04em', lineHeight: 1 }}>{s.val}</div>
+              <div style={{ fontSize: '0.68rem', fontWeight: 600, color: text3, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.35rem' }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── LIVE MARKETS ── */}
+      <section style={{ maxWidth: 1100, margin: '0 auto', padding: '5rem 2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '0.5rem' }}>
+              <span style={{ width: 16, height: 2, background: '#14B8A6', display: 'inline-block' }} />
+              Markets
+            </div>
+            <h2 style={{ fontSize: 'clamp(1.6rem,3vw,2.2rem)', fontWeight: 800, color: text, letterSpacing: '-0.04em' }}>
+              Africa. Market by market.
+            </h2>
+          </div>
+          <p style={{ fontSize: '0.875rem', color: text2, maxWidth: 320, lineHeight: 1.6, fontWeight: 300 }}>
+            We build neighborhood by neighborhood — verified data first, then intelligence. Live now in Lagos. Expanding to Accra, Nairobi, and beyond.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
+          {LIVE_MARKETS.map(m => (
+            <div
+              key={m.slug}
+              onClick={() => m.live && router.push(`/neighborhood/${m.slug}`)}
+              style={{
+                background: bg3,
+                border: `1px solid ${m.live ? borderP : border}`,
+                borderRadius: 14, padding: '1.25rem',
+                cursor: m.live ? 'pointer' : 'default',
+                opacity: m.live ? 1 : 0.55,
+                transition: 'all 0.2s',
+                position: 'relative',
+              }}
+              onMouseEnter={e => { if (m.live) { e.currentTarget.style.borderColor = 'rgba(91,46,255,0.5)'; e.currentTarget.style.transform = 'translateY(-2px)' } }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = m.live ? borderP : border; e.currentTarget.style.transform = 'translateY(0)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                <span style={{ fontSize: '1.4rem' }}>{m.flag}</span>
+                {m.live ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(20,184,166,0.12)', border: '1px solid rgba(20,184,166,0.25)', color: '#14B8A6', borderRadius: 100, padding: '0.15rem 0.55rem', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.04em' }}>
+                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#14B8A6', display: 'inline-block' }} />
+                    LIVE
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '0.65rem', color: text3, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Coming soon</span>
+                )}
+              </div>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: text, marginBottom: '0.2rem' }}>{m.name}</div>
+              <div style={{ fontSize: '0.78rem', color: text2 }}>{m.city}, {m.country}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── WHAT ZALONE COMPUTES ── */}
+      <section style={{ background: dark ? bg2 : bg2, borderTop: `1px solid ${border}`, borderBottom: `1px solid ${border}` }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '5rem 2rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4rem', alignItems: 'center' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: '0.875rem' }}>
+                <span style={{ width: 16, height: 2, background: '#14B8A6', display: 'inline-block' }} />
+                What Zalone Computes
+              </div>
+              <h2 style={{ fontSize: 'clamp(1.8rem,3.5vw,2.6rem)', fontWeight: 800, color: text, letterSpacing: '-0.04em', lineHeight: 1.08, marginBottom: '1rem' }}>
+                Not listings.<br />Intelligence.
+              </h2>
+              <p style={{ color: text2, lineHeight: 1.7, marginBottom: '2rem', fontWeight: 300, fontSize: '1rem' }}>
+                Every search returns real financial metrics computed from verified market benchmarks.
+                Not estimates. Not guesses. Math on real inputs — so you can invest with confidence.
+              </p>
+              <button onClick={() => inputRef.current?.focus()} style={{ background: '#5B2EFF', color: '#fff', border: 'none', borderRadius: 10, padding: '0.875rem 1.75rem', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#7C5FFF'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#5B2EFF'; e.currentTarget.style.transform = 'translateY(0)' }}
+              >
+                Start Analyzing →
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              {INTELLIGENCE_METRICS.map(m => (
+                <div key={m.label} style={{ background: bg3, border: `1px solid ${border}`, borderRadius: 12, padding: '1.1rem', transition: 'border-color 0.2s' }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'rgba(91,46,255,0.35)')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = border)}
+                >
+                  <div style={{ fontSize: '1.2rem', color: '#14B8A6', marginBottom: '0.5rem' }}>{m.icon}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: text, marginBottom: '0.3rem' }}>{m.label}</div>
+                  <div style={{ fontSize: '0.75rem', color: text2, lineHeight: 1.5, fontWeight: 300 }}>{m.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── AGENCY CTA ── */}
+      <section style={{ maxWidth: 960, margin: '0 auto', padding: '5rem 2rem' }}>
+        <div style={{ background: dark ? 'linear-gradient(135deg, rgba(91,46,255,0.13) 0%, rgba(20,184,166,0.07) 100%)' : 'linear-gradient(135deg, rgba(91,46,255,0.05) 0%, rgba(20,184,166,0.03) 100%)', border: '1px solid rgba(91,46,255,0.22)', borderRadius: 24, padding: 'clamp(2rem,4vw,3.5rem)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '2rem', flexWrap: 'wrap', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: -80, right: -60, width: 280, height: 280, borderRadius: '50%', background: 'radial-gradient(circle, rgba(91,46,255,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
+          <div style={{ position: 'relative', zIndex: 1, maxWidth: 460 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.68rem', fontWeight: 700, color: '#14B8A6', textTransform: 'uppercase', letterSpacing: '0.14em', marginBottom: '0.875rem' }}>
+              <span style={{ width: 14, height: 2, background: '#14B8A6', display: 'inline-block' }} />
+              Founding Agency Partners
+            </div>
+            <h3 style={{ fontSize: 'clamp(1.4rem,2.5vw,1.9rem)', fontWeight: 800, color: text, letterSpacing: '-0.03em', lineHeight: 1.15, marginBottom: '0.875rem' }}>
+              Your listings get intelligence.<br />Free. Forever.
+            </h3>
+            <p style={{ fontSize: '0.9rem', color: text2, lineHeight: 1.7, fontWeight: 300 }}>
+              Founding agency partners receive free yield analysis and cap rate reports
+              on every listing they share — across Nigeria, Ghana, Kenya, or wherever you operate.
+              Your data. Our intelligence. Source credit on every property we publish.
+            </p>
+          </div>
+          <a href="mailto:partners@manop.africa" style={{ background: '#5B2EFF', color: '#fff', padding: '0.875rem 1.75rem', borderRadius: 12, fontSize: '0.9rem', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap', position: 'relative', zIndex: 1, display: 'inline-block', transition: 'background 0.15s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = '#7C5FFF')}
+            onMouseLeave={e => (e.currentTarget.style.background = '#5B2EFF')}
+          >
+            Become a Founding Partner →
+          </a>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer style={{ background: dark ? bg2 : bg2, borderTop: `1px solid ${border}`, padding: '2.5rem 2rem' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#5B2EFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 800, color: '#fff' }}>Z</div>
+            <div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: text }}>Zalone</div>
+              <div style={{ fontSize: '0.65rem', color: text3 }}>Nigeria · Ghana · Kenya · South Africa</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.8rem', color: text2, flexWrap: 'wrap' }}>
+            <a href="/search" style={{ color: text2, textDecoration: 'none' }}>Properties</a>
+            <a href="/neighborhood/lekki-phase-1" style={{ color: text2, textDecoration: 'none' }}>Markets</a>
+            <a href="mailto:partners@manop.africa" style={{ color: text2, textDecoration: 'none' }}>Agency Partners</a>
+          </div>
+          <div style={{ fontSize: '0.68rem', color: text3, letterSpacing: '0.04em' }}>
+            Making Africa Real Estate Investable
+          </div>
+        </div>
+      </footer>
+
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(20,184,166,0.4)} 50%{opacity:0.6;box-shadow:0 0 0 4px rgba(20,184,166,0)} }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        a { color:inherit; }
+        input::placeholder { color: rgba(148,163,184,0.5); }
+        @media(max-width:768px){
+          section[style*="grid-template-columns: 1fr 1fr"]{display:block!important;}
+          section[style*="grid-template-columns: 1fr 1fr"] > div:last-child{margin-top:2rem;}
+        }
+      `}</style>
+    </div>
+  )
+}
+</file>
+
+<file path="components/NavBar.tsx">
+'use client'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { getInitialDark, setTheme, listenTheme } from '../lib/theme'
+
+export default function NavBar() {
+  const [dark,    setDark]    = useState(true)
+  const [scrolled,setScrolled]= useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+    setDark(getInitialDark())
+    document.documentElement.setAttribute('data-theme', getInitialDark() ? 'dark' : 'light')
+
+    const onScroll = () => setScrolled(window.scrollY > 10)
+    window.addEventListener('scroll', onScroll)
+
+    // Listen for theme changes triggered by other pages
+    const unlisten = listenTheme(d => setDark(d))
+
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      unlisten()
+    }
+  }, [])
+
+  const toggle = () => {
+    const next = !dark
+    setDark(next)
+    setTheme(next)
+  }
+
+  const bg = dark
+    ? `rgba(15,23,42,${scrolled ? '0.97' : '0.90'})`
+    : `rgba(248,250,252,${scrolled ? '0.98' : '0.93'})`
+
+  const textColor    = dark ? '#F8FAFC' : '#0F172A'
+  const textMuted    = dark ? 'rgba(248,250,252,0.6)' : 'rgba(15,23,42,0.6)'
+  const borderColor  = dark ? 'rgba(248,250,252,0.07)' : 'rgba(15,23,42,0.08)'
+
+  return (
+    <nav style={{
+      position: 'sticky', top: 0, zIndex: 200,
+      background: bg,
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+      borderBottom: `1px solid ${borderColor}`,
+      padding: '0 2rem',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      height: 64,
+      transition: 'background 0.3s',
+    }}>
+      {/* Brand */}
+      <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', textDecoration: 'none' }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 9,
+          background: '#5B2EFF',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '1rem', fontWeight: 800, color: '#fff',
+          letterSpacing: '-0.02em', flexShrink: 0,
+        }}>Z</div>
+        <div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: textColor, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+            Zalone
+          </div>
+          <div style={{ fontSize: '0.55rem', fontWeight: 600, color: '#14B8A6', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            Africa Intelligence
+          </div>
+        </div>
+      </Link>
+
+      {/* Right side */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+        <Link href="/search" style={{ fontSize: '0.82rem', fontWeight: 500, color: textMuted, padding: '0.4rem 0.875rem', borderRadius: 8, textDecoration: 'none', transition: 'color 0.15s' }}>
+          Properties
+        </Link>
+        <Link href="/neighborhood/lekki-phase-1" style={{ fontSize: '0.82rem', fontWeight: 500, color: textMuted, padding: '0.4rem 0.875rem', borderRadius: 8, textDecoration: 'none' }}>
+          Markets
+        </Link>
+
+        {/* Toggle */}
+        {mounted && (
+          <button
+            onClick={toggle}
+            aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            style={{
+              width: 44, height: 24, borderRadius: 100,
+              background: dark ? '#5B2EFF' : '#CBD5E1',
+              border: 'none', cursor: 'pointer',
+              position: 'relative',
+              transition: 'background 0.25s',
+              margin: '0 0.4rem', flexShrink: 0,
+            }}
+          >
+            <div style={{
+              position: 'absolute',
+              top: 3, left: dark ? 23 : 3,
+              width: 18, height: 18, borderRadius: '50%',
+              background: '#fff',
+              transition: 'left 0.25s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.62rem',
+            }}>
+              {dark ? '☀' : '☾'}
+            </div>
+          </button>
+        )}
+
+        <a href="mailto:partners@manop.africa" style={{
+          background: '#5B2EFF', color: '#fff',
+          padding: '0.42rem 1rem', borderRadius: 8,
+          fontSize: '0.8rem', fontWeight: 600,
+          textDecoration: 'none', whiteSpace: 'nowrap',
+          transition: 'background 0.15s',
+        }}>
+          Agency Partner →
+        </a>
+      </div>
+    </nav>
+  )
 }
 </file>
 
