@@ -1,5 +1,5 @@
 // lib/intelligence.ts
-// Zalone Intelligence Engine client
+// Zahazi Intelligence Engine client
 // Calls the Manop intelligence API (FastAPI backend)
 // Falls back to local computation when API unavailable
 

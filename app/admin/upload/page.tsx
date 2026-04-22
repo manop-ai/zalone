@@ -1,5 +1,5 @@
 'use client'
-// app/admin/upload/page.tsx — Zalone Upload UI v3
+// app/admin/upload/page.tsx — Zahazi Upload UI v3
 // Sends file to MANOP backend for cleaning (not browser-side)
 // Supports CSV + Excel (.xlsx)
 // Handles multiple agencies in one file
@@ -329,7 +329,7 @@ export default function UploadPage() {
         <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✓</div>
         <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: D.green, marginBottom: '0.75rem' }}>{saved} Records Saved</h1>
         <p style={{ color: D.text2, lineHeight: 1.65, marginBottom: '2rem' }}>
-          Properties from <strong>{agency || 'this upload'}</strong> are now in Manop's database with source attribution. They appear on Zalone immediately.
+          Properties from <strong>{agency || 'this upload'}</strong> are now in Manop's database with source attribution. They appear on Zahazi immediately.
         </p>
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
           <button onClick={() => { setStep('upload'); setResult(null); setRejected(new Set()); setSaved(0) }} style={{ background: D.purple, color: '#fff', border: 'none', borderRadius: 10, padding: '0.75rem 1.5rem', fontWeight: 600, cursor: 'pointer', fontSize: '0.875rem' }}>Upload Another →</button>
